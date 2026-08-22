@@ -1,0 +1,19 @@
+{
+  "name": "secret-chat-server",
+  "version": "1.0.0",
+  "description": "Secret 1-to-1 live chat server with MongoDB and self-destruct security",
+  "main": "server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "mongoose": "^8.5.1",
+    "socket.io": "^4.7.5",
+    "mongodb-memory-server": "^9.3.0"
+  }
+}
