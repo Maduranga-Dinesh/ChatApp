@@ -1,31 +1,16 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { 
-  Send, Trash2, Shield, Lock, Circle, Globe, LogOut, Key, 
-  Sparkles, CheckCheck, RefreshCw, AlertOctagon, HelpCircle 
-} from 'lucide-react';
+import { Send, Lock, LogOut, Sparkles, ShieldAlert } from 'lucide-react';
 
 export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped }) {
   const [messages, setMessages] = useState([]);
   const [inputText, setInputText] = useState('');
-  const [onlineUsers, setOnlineUsers] = useState({ BOT1: false, BOT2: false });
   const [isTypingOther, setIsTypingOther] = useState(false);
-  const [showSinhalaHelper, setShowSinhalaHelper] = useState(false);
-  const [showSettingsModal, setShowSettingsModal] = useState(false);
-  const [newPassword, setNewPassword] = useState('');
-  const [passUpdateStatus, setPassUpdateStatus] = useState('');
-  const [securityStats, setSecurityStats] = useState(null);
+  const [screenShield, setScreenShield] = useState(false);
 
   const messagesEndRef = useRef(null);
   const typingTimeoutRef = useRef(null);
 
   const otherRole = role === 'BOT1' ? 'BOT2' : 'BOT1';
-
-  // Sinhala quick phrases for easy typing
-  const sinhalaPhrases = [
-    'කොහොමද?', 'හරි', 'ඔව්', 'නෑ', 'ස්තූතියි', 
-    'මම ආවා', 'පස්සෙ කතා කරමු', 'ලින්ක් එක එවන්න', 
-    'ඕක සිරා', 'පරිස්සමෙන් ඉන්න'
-  ];
 
   // Fetch initial chat history
   const fetchMessages = async () => {
@@ -34,39 +19,41 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
       if (res.ok) {
         const data = await res.json();
         setMessages(data);
+        if (socket) {
+          socket.emit('mark-seen', { readerRole: role });
+        }
       }
     } catch (err) {
       console.error('Failed to fetch messages:', err);
     }
   };
 
-  // Fetch security stats
-  const fetchSecurityStats = async () => {
-    try {
-      const res = await fetch('/api/security/status');
-      if (res.ok) {
-        const data = await res.json();
-        setSecurityStats(data);
-      }
-    } catch (err) {
-      console.error('Failed to fetch stats:', err);
-    }
-  };
-
+  // Socket and Chat listeners
   useEffect(() => {
     fetchMessages();
-    fetchSecurityStats();
 
     if (!socket) return;
 
     socket.emit('join-room', { role });
+    socket.emit('mark-seen', { readerRole: role });
 
     socket.on('receive-message', (newMsg) => {
       setMessages((prev) => [...prev, newMsg]);
+      // If the received message was from the other user, instantly mark as seen
+      if (newMsg.sender !== role) {
+        socket.emit('mark-seen', { readerRole: role });
+      }
     });
 
-    socket.on('online-status', (status) => {
-      setOnlineUsers(status);
+    socket.on('messages-seen-update', ({ readerRole, seenAt }) => {
+      setMessages((prev) =>
+        prev.map((msg) => {
+          if (msg.sender !== readerRole) {
+            return { ...msg, seen: true, seenAt: msg.seenAt || seenAt };
+          }
+          return msg;
+        })
+      );
     });
 
     socket.on('user-typing', ({ sender, isTyping }) => {
@@ -80,17 +67,73 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
       if (data.systemMsg) {
         setMessages([data.systemMsg]);
       }
-      fetchSecurityStats();
       if (onWiped) onWiped();
     });
 
     return () => {
       socket.off('receive-message');
-      socket.off('online-status');
+      socket.off('messages-seen-update');
       socket.off('user-typing');
       socket.off('database-wiped');
     };
   }, [socket, role]);
+
+  // Anti-Screenshot & Anti-Screen-Record Protections
+  useEffect(() => {
+    // 1. Prevent right-click / context menu
+    const handleContextMenu = (e) => {
+      e.preventDefault();
+      return false;
+    };
+
+    // 2. Prevent drag & drop of text/media
+    const handleDragStart = (e) => {
+      e.preventDefault();
+      return false;
+    };
+
+    // 3. Intercept PrintScreen and screenshot shortcuts
+    const handleKeyDown = (e) => {
+      const isPrintScreen = e.key === 'PrintScreen' || e.keyCode === 44;
+      const isSnippingTool = (e.ctrlKey || e.metaKey) && e.shiftKey && ['S', 's', '3', '4', '5'].includes(e.key);
+      const isDevInspect = (e.ctrlKey || e.metaKey) && e.shiftKey && ['I', 'i', 'C', 'c', 'J', 'j'].includes(e.key);
+      const isPrintOrSave = (e.ctrlKey || e.metaKey) && ['p', 'P', 's', 'S', 'u', 'U'].includes(e.key);
+
+      if (isPrintScreen || isSnippingTool || isDevInspect || isPrintOrSave) {
+        e.preventDefault();
+        try {
+          if (navigator.clipboard) {
+            navigator.clipboard.writeText('');
+          }
+        } catch (err) {}
+
+        setScreenShield(true);
+        setTimeout(() => setScreenShield(false), 2000);
+      }
+    };
+
+    // 4. Prevent copying text
+    const handleCopy = (e) => {
+      e.preventDefault();
+      try {
+        if (navigator.clipboard) {
+          navigator.clipboard.writeText('');
+        }
+      } catch (err) {}
+    };
+
+    window.addEventListener('contextmenu', handleContextMenu);
+    window.addEventListener('dragstart', handleDragStart);
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('copy', handleCopy);
+
+    return () => {
+      window.removeEventListener('contextmenu', handleContextMenu);
+      window.removeEventListener('dragstart', handleDragStart);
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('copy', handleCopy);
+    };
+  }, []);
 
   // Scroll to bottom when messages update
   useEffect(() => {
@@ -129,56 +172,6 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
     }, 2000);
   };
 
-  // Append Sinhala quick phrase
-  const addPhrase = (phrase) => {
-    setInputText((prev) => (prev ? `${prev} ${phrase}` : phrase));
-  };
-
-  // Manual Wipe (BOT1 Super Admin feature)
-  const handleManualWipe = async () => {
-    if (role !== 'BOT1') return;
-    if (window.confirm('⚠️ Are you sure you want to PERMANENTLY wipe all MongoDB chat history?')) {
-      try {
-        const res = await fetch('/api/security/manual-wipe', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ password: userPassword }),
-        });
-        if (res.ok) {
-          socket.emit('manual-wipe-request', { sender: role });
-        }
-      } catch (err) {
-        console.error('Wipe failed:', err);
-      }
-    }
-  };
-
-  // Password update by BOT1
-  const handleUpdatePassword = async (e) => {
-    e.preventDefault();
-    if (!newPassword || newPassword.length < 4) {
-      setPassUpdateStatus('Password must be at least 4 characters');
-      return;
-    }
-
-    try {
-      const res = await fetch('/api/security/set-password', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ newPassword, currentPassword: userPassword }),
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setPassUpdateStatus('✅ Password updated successfully!');
-        setNewPassword('');
-      } else {
-        setPassUpdateStatus(`❌ ${data.error || 'Failed to update'}`);
-      }
-    } catch (err) {
-      setPassUpdateStatus('Error connecting to server');
-    }
-  };
-
   return (
     <div style={{
       display: 'flex',
@@ -189,12 +182,39 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
       background: 'rgba(10, 10, 15, 0.95)',
       borderLeft: '1px solid rgba(255, 255, 255, 0.08)',
       borderRight: '1px solid rgba(255, 255, 255, 0.08)',
-      position: 'relative'
+      position: 'relative',
+      userSelect: 'none',
+      WebkitUserSelect: 'none'
     }}>
-      
+      {/* Anti-Screenshot Blackout Security Shield */}
+      {screenShield && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          background: '#000000',
+          zIndex: 99999,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: '12px',
+          color: '#ef4444',
+          textAlign: 'center',
+          padding: '20px'
+        }}>
+          <ShieldAlert size={48} color="#ef4444" />
+          <h2 style={{ fontSize: '18px', fontWeight: '700', letterSpacing: '0.5px' }}>
+            SCREENSHOT / CAPTURE PROTECTED
+          </h2>
+          <p style={{ fontSize: '12px', color: '#94a3b8' }}>
+            Screen recording and captures are blocked for security.
+          </p>
+        </div>
+      )}
+
       {/* Top Navigation Bar */}
       <div style={{
-        padding: '16px 20px',
+        padding: '14px 18px',
         background: 'rgba(18, 18, 26, 0.9)',
         backdropFilter: 'blur(16px)',
         borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
@@ -203,7 +223,6 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
         justifyContent: 'space-between',
         zIndex: 10
       }}>
-        {/* Action Controls */}
         <div style={{ display: 'flex', alignItems: 'center', marginLeft: 'auto' }}>
           {/* Logout Button */}
           <button
@@ -284,9 +303,7 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
                   alignSelf: isMe ? 'flex-end' : 'flex-start'
                 }}
               >
-                {/* 
-                  CHAT BUBBLE STYLING (+30% size, 50% white transparency)
-                */}
+                {/* Chat Bubble (+30% size, 50% white transparency) */}
                 <div
                   className={`chat-bubble-white50 ${isMe ? 'chat-bubble-me' : 'chat-bubble-other'}`}
                   style={{
@@ -301,16 +318,32 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
                   {msg.text}
                 </div>
 
-                {/* Timestamp */}
-                <span style={{
-                  fontSize: '8px',
-                  color: 'rgba(255, 255, 255, 0.3)',
+                {/* Timestamp & Read / Seen Status */}
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
                   marginTop: '2px',
                   paddingLeft: '3px',
-                  paddingRight: '3px'
+                  paddingRight: '3px',
+                  fontSize: '8px',
+                  color: 'rgba(255, 255, 255, 0.3)'
                 }}>
-                  {new Date(msg.createdAt || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                </span>
+                  <span>
+                    {new Date(msg.createdAt || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                  {isMe && (
+                    <span style={{
+                      color: msg.seen ? '#818cf8' : 'rgba(255, 255, 255, 0.25)',
+                      fontWeight: msg.seen ? '600' : '400',
+                      fontSize: '7.5px'
+                    }}>
+                      {msg.seen
+                        ? `• Seen ${new Date(msg.seenAt || msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                        : '• Sent'}
+                    </span>
+                  )}
+                </div>
               </div>
             );
           })
@@ -320,17 +353,17 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
         {isTypingOther && (
           <div style={{
             alignSelf: 'flex-start',
-            fontSize: '12px',
+            fontSize: '11px',
             color: 'var(--text-muted)',
             display: 'flex',
             alignItems: 'center',
             gap: '6px',
-            padding: '6px 12px',
-            borderRadius: '12px',
+            padding: '4px 10px',
+            borderRadius: '10px',
             background: 'rgba(255, 255, 255, 0.05)'
           }}>
-            <Sparkles size={12} color="#818cf8" className="pulse-red" />
-            <span>{otherRole} is typing...</span>
+            <Sparkles size={11} color="#818cf8" className="pulse-red" />
+            <span>typing...</span>
           </div>
         )}
 

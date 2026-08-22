@@ -18,6 +18,14 @@ const messageSchema = new mongoose.Schema(
     clientMsgId: {
       type: String,
     },
+    seen: {
+      type: Boolean,
+      default: false,
+    },
+    seenAt: {
+      type: Date,
+      default: null,
+    },
   },
   {
     timestamps: true,

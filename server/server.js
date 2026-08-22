@@ -298,6 +298,34 @@ io.on('connection', (socket) => {
     socket.to('secret-room').emit('user-typing', { sender, isTyping });
   });
 
+  socket.on('mark-seen', async ({ readerRole }) => {
+    try {
+      const senderToMark = readerRole === 'BOT1' ? 'BOT2' : 'BOT1';
+      const now = new Date();
+
+      if (isMongoConnected) {
+        await Message.updateMany(
+          { sender: senderToMark, seen: false },
+          { $set: { seen: true, seenAt: now } }
+        );
+      } else {
+        inMemoryStore.messages.forEach((m) => {
+          if (m.sender === senderToMark && !m.seen) {
+            m.seen = true;
+            m.seenAt = now;
+          }
+        });
+      }
+
+      io.emit('messages-seen-update', {
+        readerRole,
+        seenAt: now,
+      });
+    } catch (err) {
+      console.error('Error marking seen:', err);
+    }
+  });
+
   socket.on('manual-wipe-request', async ({ sender }) => {
     if (sender === 'BOT1') {
       await executeDatabaseWipe('manual');
