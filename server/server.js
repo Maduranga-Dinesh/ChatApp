@@ -5,6 +5,7 @@ import mongoose from 'mongoose';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 import Message from './models/Message.js';
 import SecurityState from './models/SecurityState.js';
@@ -30,18 +31,64 @@ const PORT = process.env.PORT || 5000;
 const DEFAULT_PASSWORD = process.env.CHAT_PASSWORD || 'secret123';
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/secretchat';
 
-// Fallback in-memory storage if MongoDB server is offline
+// File-based persistent storage fallback
+const DATA_DIR = path.join(__dirname, 'data');
+if (!fs.existsSync(DATA_DIR)) {
+  try {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+  } catch (err) {}
+}
+const MESSAGES_FILE = path.join(DATA_DIR, 'messages.json');
+const SECURITY_FILE = path.join(DATA_DIR, 'security.json');
+
 let inMemoryStore = {
   security: {
     roomKey: 'main_room',
     failedAttempts: 0,
     maxAttempts: 3,
     customPassword: DEFAULT_PASSWORD,
+    primaryDeviceId: null,
+    secondaryDeviceId: null,
     lastWipeAt: null,
     wipeCount: 0,
   },
   messages: [],
 };
+
+// Load saved data from disk
+function loadDiskStorage() {
+  try {
+    if (fs.existsSync(MESSAGES_FILE)) {
+      const raw = fs.readFileSync(MESSAGES_FILE, 'utf-8');
+      inMemoryStore.messages = JSON.parse(raw);
+    }
+    if (fs.existsSync(SECURITY_FILE)) {
+      const raw = fs.readFileSync(SECURITY_FILE, 'utf-8');
+      inMemoryStore.security = { ...inMemoryStore.security, ...JSON.parse(raw) };
+    }
+    console.log(`📂 Disk Storage loaded: ${inMemoryStore.messages.length} messages found.`);
+  } catch (err) {
+    console.error('Error reading disk storage:', err);
+  }
+}
+
+function saveMessagesToDisk() {
+  try {
+    fs.writeFileSync(MESSAGES_FILE, JSON.stringify(inMemoryStore.messages, null, 2));
+  } catch (err) {
+    console.error('Error saving messages to disk:', err);
+  }
+}
+
+function saveSecurityToDisk() {
+  try {
+    fs.writeFileSync(SECURITY_FILE, JSON.stringify(inMemoryStore.security, null, 2));
+  } catch (err) {
+    console.error('Error saving security to disk:', err);
+  }
+}
+
+loadDiskStorage();
 
 let isMongoConnected = false;
 
@@ -65,7 +112,7 @@ async function initDatabase() {
       console.log(`Security state created in MongoDB. Default Password: "${DEFAULT_PASSWORD}"`);
     }
   } catch (err) {
-    console.log('⚠️ Local/Remote MongoDB not active. Operating with high-speed in-memory database provider.');
+    console.log('⚠️ MongoDB server not active. Operating with Persistent File + High-Speed In-Memory Database.');
     isMongoConnected = false;
   }
 }
@@ -94,6 +141,7 @@ async function saveSecState(secObj) {
     await secObj.save();
   } else {
     inMemoryStore.security = { ...secObj };
+    saveSecurityToDisk();
   }
 }
 
@@ -105,11 +153,14 @@ async function executeDatabaseWipe(reason = '3_failed_password_attempts') {
     await Message.deleteMany({});
   }
   inMemoryStore.messages = [];
+  saveMessagesToDisk();
 
   const sec = await getSecState();
   sec.failedAttempts = 0;
   sec.lastWipeAt = new Date();
   sec.wipeCount = (sec.wipeCount || 0) + 1;
+  sec.primaryDeviceId = null;
+  sec.secondaryDeviceId = null;
   await saveSecState(sec);
 
   const systemMsg = {
@@ -123,6 +174,7 @@ async function executeDatabaseWipe(reason = '3_failed_password_attempts') {
     await Message.create(systemMsg);
   } else {
     inMemoryStore.messages.push(systemMsg);
+    saveMessagesToDisk();
   }
 
   // Broadcast to all connected clients
@@ -303,6 +355,8 @@ io.on('connection', (socket) => {
         sender,
         text: text.trim(),
         type: 'text',
+        seen: false,
+        seenAt: null,
         clientMsgId,
         createdAt: new Date(),
       };
@@ -312,6 +366,7 @@ io.on('connection', (socket) => {
         savedMsg = await Message.create(msgObj);
       } else {
         inMemoryStore.messages.push(msgObj);
+        saveMessagesToDisk();
       }
 
       io.emit('receive-message', savedMsg);
@@ -341,6 +396,7 @@ io.on('connection', (socket) => {
             m.seenAt = now;
           }
         });
+        saveMessagesToDisk();
       }
 
       io.emit('messages-seen-update', {
