@@ -404,38 +404,39 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
 
             return (
               <div
-                key={msg._id || idx}
+                key={msg._id || msg.clientMsgId || idx}
                 style={{
                   display: 'flex',
                   flexDirection: 'column',
-                  alignItems: isMe ? 'flex-end' : 'flex-start',
+                  alignItems: 'flex-start',
                   maxWidth: '85%',
-                  alignSelf: isMe ? 'flex-end' : 'flex-start'
+                  alignSelf: 'flex-start',
+                  textAlign: 'left'
                 }}
               >
-                {/* Sender tag for partner's messages */}
-                {!isMe && (
-                  <span style={{
-                    fontSize: '8.5px',
-                    fontWeight: '600',
-                    color: '#818cf8',
-                    marginBottom: '2px',
-                    paddingLeft: '3px'
-                  }}>
-                    {msg.sender}
-                  </span>
-                )}
+                {/* Sender tag with distinct role color */}
+                <span style={{
+                  fontSize: '10px',
+                  fontWeight: '600',
+                  color: isMe ? '#a5b4fc' : '#38bdf8',
+                  marginBottom: '2px',
+                  paddingLeft: '3px'
+                }}>
+                  {isMe ? `${msg.sender} (Me)` : msg.sender}
+                </span>
 
-                {/* Chat Bubble (+30% size, 50% white transparency) */}
+                {/* Chat Bubble (+20% size increase, 50% white transparency, left aligned) */}
                 <div
-                  className={`chat-bubble-white50 ${isMe ? 'chat-bubble-me' : 'chat-bubble-other'}`}
+                  className="chat-bubble-white50"
                   style={{
-                    padding: '6px 10px',
-                    borderRadius: '11px',
-                    fontSize: '8.5px',
-                    lineHeight: '1.35',
+                    padding: '7px 12px',
+                    borderRadius: '12px',
+                    borderBottomLeftRadius: '2px',
+                    fontSize: '10.5px',
+                    lineHeight: '1.4',
                     wordBreak: 'break-word',
-                    display: 'inline-block'
+                    display: 'inline-block',
+                    textAlign: 'left'
                   }}
                 >
                   {msg.text}
@@ -445,21 +446,21 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
                 <div style={{
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '4px',
-                  marginTop: '2px',
+                  gap: '5px',
+                  marginTop: '3px',
                   paddingLeft: '3px',
                   paddingRight: '3px',
-                  fontSize: '7.5px',
-                  color: 'rgba(255, 255, 255, 0.3)'
+                  fontSize: '9px',
+                  color: 'rgba(255, 255, 255, 0.4)'
                 }}>
                   <span>
                     {new Date(msg.createdAt || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </span>
                   {isMe && (
                     <span style={{
-                      color: msg.seen ? '#818cf8' : 'rgba(255, 255, 255, 0.25)',
+                      color: msg.seen ? '#818cf8' : 'rgba(255, 255, 255, 0.3)',
                       fontWeight: msg.seen ? '600' : '400',
-                      fontSize: '7.5px'
+                      fontSize: '9px'
                     }}>
                       {msg.seen
                         ? `• Seen ${new Date(msg.seenAt || msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
