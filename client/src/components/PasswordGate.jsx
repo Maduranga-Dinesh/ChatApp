@@ -63,8 +63,11 @@ export default function PasswordGate({ onLoginSuccess, onDatabaseWiped, statusIn
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      minHeight: '100vh',
-      padding: '20px',
+      minHeight: '100dvh',
+      paddingTop: 'max(20px, env(safe-area-inset-top))',
+      paddingBottom: 'max(20px, env(safe-area-inset-bottom))',
+      paddingLeft: 'max(20px, env(safe-area-inset-left))',
+      paddingRight: 'max(20px, env(safe-area-inset-right))',
       position: 'relative'
     }}>
       {/* Subtle Background Glow */}
@@ -127,8 +130,10 @@ export default function PasswordGate({ onLoginSuccess, onDatabaseWiped, statusIn
                 background: 'rgba(0, 0, 0, 0.45)',
                 border: errorMsg ? '1px solid #ef4444' : '1px solid rgba(255, 255, 255, 0.12)',
                 color: '#fff',
-                fontSize: '15px',
+                fontSize: '16px',
                 outline: 'none',
+                minHeight: '44px',
+                touchAction: 'manipulation',
                 transition: 'border-color 0.2s ease',
               }}
             />

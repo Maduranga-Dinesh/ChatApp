@@ -182,15 +182,15 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
     <div style={{
       display: 'flex',
       flexDirection: 'column',
-      height: '100vh',
-      maxWidth: '900px',
+      height: '100dvh',
+      width: '100%',
+      maxWidth: '850px',
       margin: '0 auto',
       background: 'rgba(10, 10, 15, 0.95)',
       borderLeft: '1px solid rgba(255, 255, 255, 0.08)',
       borderRight: '1px solid rgba(255, 255, 255, 0.08)',
       position: 'relative',
-      userSelect: 'none',
-      WebkitUserSelect: 'none'
+      overflow: 'hidden'
     }}>
       {/* Anti-Screenshot Blackout Security Shield */}
       {screenShield && (
@@ -218,36 +218,41 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
         </div>
       )}
 
-      {/* Top Navigation Bar */}
+      {/* Top Navigation Bar with iOS Safe Area Top Padding */}
       <div style={{
-        padding: '12px 18px',
-        background: 'rgba(18, 18, 26, 0.9)',
-        backdropFilter: 'blur(16px)',
-        borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
+        paddingTop: 'max(14px, env(safe-area-inset-top))',
+        paddingBottom: '12px',
+        paddingLeft: 'max(16px, env(safe-area-inset-left))',
+        paddingRight: 'max(16px, env(safe-area-inset-right))',
+        background: 'rgba(18, 18, 26, 0.92)',
+        backdropFilter: 'blur(20px)',
+        WebkitBackdropFilter: 'blur(20px)',
+        borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
+        flexShrink: 0,
         zIndex: 10
       }}>
         {/* User Identity & Peer Status */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <div style={{
             fontSize: '13px',
             fontWeight: '700',
             color: '#fff',
             display: 'flex',
             alignItems: 'center',
-            gap: '6px'
+            gap: '5px'
           }}>
             <span>{role}</span>
             <span style={{
-              fontSize: '10px',
+              fontSize: '9.5px',
               fontWeight: '600',
               color: '#818cf8',
-              background: 'rgba(99, 102, 241, 0.15)',
-              border: '1px solid rgba(99, 102, 241, 0.3)',
-              padding: '2px 7px',
-              borderRadius: '8px'
+              background: 'rgba(99, 102, 241, 0.18)',
+              border: '1px solid rgba(99, 102, 241, 0.35)',
+              padding: '2px 6px',
+              borderRadius: '6px'
             }}>
               (Me)
             </span>
@@ -260,9 +265,9 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
             fontSize: '11px',
             color: onlineUsers[otherRole] ? '#10b981' : 'var(--text-muted)',
             borderLeft: '1px solid rgba(255, 255, 255, 0.1)',
-            paddingLeft: '10px'
+            paddingLeft: '8px'
           }}>
-            <Circle size={7} fill={onlineUsers[otherRole] ? '#10b981' : '#64748b'} color="transparent" />
+            <Circle size={6} fill={onlineUsers[otherRole] ? '#10b981' : '#64748b'} color="transparent" />
             <span>{otherRole}: {onlineUsers[otherRole] ? 'Online' : 'Offline'}</span>
           </div>
         </div>
@@ -271,17 +276,17 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
         <button
           onClick={onLogout}
           style={{
-            padding: '7px 14px',
+            padding: '6px 12px',
             borderRadius: '10px',
             border: '1px solid rgba(255, 255, 255, 0.1)',
-            background: 'rgba(255, 255, 255, 0.05)',
+            background: 'rgba(255, 255, 255, 0.06)',
             color: 'var(--text-muted)',
             fontSize: '12px',
-            cursor: 'pointer',
             display: 'flex',
             alignItems: 'center',
-            gap: '6px',
-            transition: 'background 0.2s ease'
+            gap: '5px',
+            minHeight: '34px',
+            touchAction: 'manipulation'
           }}
         >
           <LogOut size={13} />
@@ -289,11 +294,13 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
         </button>
       </div>
 
-      {/* Chat Messages Body */}
+      {/* Chat Messages Body with Momentum Touch Scroll */}
       <div style={{
         flex: 1,
         overflowY: 'auto',
-        padding: '16px 14px',
+        WebkitOverflowScrolling: 'touch',
+        overscrollBehaviorY: 'contain',
+        padding: '14px 12px',
         display: 'flex',
         flexDirection: 'column',
         gap: '8px'
@@ -303,13 +310,13 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
             textAlign: 'center',
             margin: 'auto',
             color: 'var(--text-muted)',
-            padding: '40px 20px'
+            padding: '30px 16px'
           }}>
-            <Lock size={36} style={{ margin: '0 auto 12px', opacity: 0.3 }} />
-            <h3 style={{ fontSize: '14px', color: '#fff', marginBottom: '4px' }}>
+            <Lock size={32} style={{ margin: '0 auto 10px', opacity: 0.3 }} />
+            <h3 style={{ fontSize: '13px', color: '#fff', marginBottom: '4px' }}>
               Secret 1-to-1 Chat Ready
             </h3>
-            <p style={{ fontSize: '11px', maxWidth: '260px', margin: '0 auto', opacity: 0.7 }}>
+            <p style={{ fontSize: '11px', maxWidth: '240px', margin: '0 auto', opacity: 0.7 }}>
               No messages yet. Send a message to start secret conversation.
             </p>
           </div>
@@ -321,11 +328,11 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
                   background: 'rgba(239, 68, 68, 0.15)',
                   border: '1px solid rgba(239, 68, 68, 0.4)',
                   borderRadius: '10px',
-                  padding: '8px 12px',
+                  padding: '6px 10px',
                   color: '#fca5a5',
-                  fontSize: '10px',
+                  fontSize: '9.5px',
                   textAlign: 'center',
-                  margin: '6px 0'
+                  margin: '4px 0'
                 }}>
                   {msg.text}
                 </div>
@@ -341,14 +348,14 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
                   display: 'flex',
                   flexDirection: 'column',
                   alignItems: isMe ? 'flex-end' : 'flex-start',
-                  maxWidth: '82%',
+                  maxWidth: '85%',
                   alignSelf: isMe ? 'flex-end' : 'flex-start'
                 }}
               >
                 {/* Sender tag for partner's messages */}
                 {!isMe && (
                   <span style={{
-                    fontSize: '9px',
+                    fontSize: '8.5px',
                     fontWeight: '600',
                     color: '#818cf8',
                     marginBottom: '2px',
@@ -381,7 +388,7 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
                   marginTop: '2px',
                   paddingLeft: '3px',
                   paddingRight: '3px',
-                  fontSize: '8px',
+                  fontSize: '7.5px',
                   color: 'rgba(255, 255, 255, 0.3)'
                 }}>
                   <span>
@@ -408,16 +415,16 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
         {isTypingOther && (
           <div style={{
             alignSelf: 'flex-start',
-            fontSize: '11px',
+            fontSize: '10px',
             color: 'var(--text-muted)',
             display: 'flex',
             alignItems: 'center',
-            gap: '6px',
-            padding: '4px 10px',
-            borderRadius: '10px',
+            gap: '5px',
+            padding: '3px 8px',
+            borderRadius: '8px',
             background: 'rgba(255, 255, 255, 0.05)'
           }}>
-            <Sparkles size={11} color="#818cf8" className="pulse-red" />
+            <Sparkles size={10} color="#818cf8" className="pulse-red" />
             <span>typing...</span>
           </div>
         )}
@@ -425,14 +432,20 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Chat Input Bar */}
+      {/* Chat Input Bar with iOS Safe Area Bottom Padding */}
       <div style={{
-        padding: '14px 16px',
+        paddingTop: '10px',
+        paddingBottom: 'max(14px, env(safe-area-inset-bottom))',
+        paddingLeft: 'max(12px, env(safe-area-inset-left))',
+        paddingRight: 'max(12px, env(safe-area-inset-right))',
         background: 'rgba(18, 18, 26, 0.95)',
-        borderTop: '1px solid rgba(255, 255, 255, 0.1)',
+        backdropFilter: 'blur(20px)',
+        WebkitBackdropFilter: 'blur(20px)',
+        borderTop: '1px solid rgba(255, 255, 255, 0.08)',
+        flexShrink: 0
       }}>
-        <form onSubmit={handleSendMessage} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          {/* Text Input */}
+        <form onSubmit={handleSendMessage} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          {/* Text Input - 16px font prevents iOS Safari auto-zoom */}
           <input
             type="text"
             placeholder="Type a secret message..."
@@ -440,13 +453,15 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
             onChange={handleInputChange}
             style={{
               flex: 1,
-              padding: '12px 16px',
-              borderRadius: '14px',
+              padding: '10px 14px',
+              borderRadius: '12px',
               background: 'rgba(0, 0, 0, 0.4)',
               border: '1px solid rgba(255, 255, 255, 0.15)',
               color: '#fff',
-              fontSize: '14px',
-              outline: 'none'
+              fontSize: '16px',
+              outline: 'none',
+              minHeight: '42px',
+              touchAction: 'manipulation'
             }}
           />
 
@@ -455,8 +470,8 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
             type="submit"
             disabled={!inputText.trim()}
             style={{
-              padding: '12px 18px',
-              borderRadius: '14px',
+              padding: '10px 16px',
+              borderRadius: '12px',
               border: 'none',
               background: inputText.trim() 
                 ? 'linear-gradient(135deg, #6366f1, #4f46e5)' 
@@ -466,10 +481,13 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
+              minHeight: '42px',
+              minWidth: '42px',
+              touchAction: 'manipulation',
               transition: 'all 0.2s'
             }}
           >
-            <Send size={18} />
+            <Send size={16} />
           </button>
         </form>
       </div>
