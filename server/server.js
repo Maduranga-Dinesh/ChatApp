@@ -96,9 +96,9 @@ let isMongoConnected = false;
 async function initDatabase() {
   console.log('Attempting MongoDB connection to:', MONGODB_URI);
   try {
-    await mongoose.connect(MONGODB_URI, { serverSelectionTimeoutMS: 2000 });
+    await mongoose.connect(MONGODB_URI, { serverSelectionTimeoutMS: 5000 });
     isMongoConnected = true;
-    console.log('✅ Connected to MongoDB server successfully.');
+    console.log('✅ Connected to MongoDB Atlas server successfully.');
 
     // Initialize security state in MongoDB
     let sec = await SecurityState.findOne({ roomKey: 'main_room' });
