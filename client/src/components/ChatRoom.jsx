@@ -385,41 +385,22 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
         flexDirection: 'column',
         gap: '8px'
       }}>
-        {messages.length === 0 ? (
+        {messages.filter((m) => m.type !== 'system').length === 0 ? (
           <div style={{
             textAlign: 'center',
             margin: 'auto',
             color: 'var(--text-muted)',
             padding: '30px 16px'
           }}>
-            <Lock size={32} style={{ margin: '0 auto 10px', opacity: 0.3 }} />
-            <h3 style={{ fontSize: '13px', color: '#fff', marginBottom: '4px' }}>
-              Secret 1-to-1 Chat Ready
-            </h3>
-            <p style={{ fontSize: '11px', maxWidth: '240px', margin: '0 auto', opacity: 0.7 }}>
-              No messages yet. Send a message to start secret conversation.
+            <p style={{ fontSize: '13px', color: 'rgba(255, 255, 255, 0.35)', margin: 0 }}>
+              No messages yet
             </p>
           </div>
         ) : (
-          messages.map((msg, idx) => {
-            if (msg.type === 'system') {
-              return (
-                <div key={msg._id || idx} style={{
-                  background: 'rgba(239, 68, 68, 0.15)',
-                  border: '1px solid rgba(239, 68, 68, 0.4)',
-                  borderRadius: '10px',
-                  padding: '6px 10px',
-                  color: '#fca5a5',
-                  fontSize: '9.5px',
-                  textAlign: 'center',
-                  margin: '4px 0'
-                }}>
-                  {msg.text}
-                </div>
-              );
-            }
-
-            const isMe = msg.sender === role;
+          messages
+            .filter((m) => m.type !== 'system')
+            .map((msg, idx) => {
+              const isMe = msg.sender === role;
 
             return (
               <div
@@ -536,7 +517,7 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
           {/* Text Input */}
           <input
             type="text"
-            placeholder="Type a secret message..."
+            placeholder="Type a message..."
             value={inputText}
             onChange={handleInputChange}
             onFocus={handleInputFocus}

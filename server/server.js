@@ -163,28 +163,13 @@ async function executeDatabaseWipe(reason = '3_failed_password_attempts') {
   sec.secondaryDeviceId = null;
   await saveSecState(sec);
 
-  const systemMsg = {
-    sender: 'SYSTEM',
-    text: `🚨 ALL CHAT HISTORY HAS BEEN PERMANENTLY DELETED FROM DATABASE (${reason === 'manual' ? 'Triggered manually by BOT1' : '3 Incorrect Password Attempts'})!`,
-    type: 'system',
-    createdAt: new Date(),
-  };
-
-  if (isMongoConnected) {
-    await Message.create(systemMsg);
-  } else {
-    inMemoryStore.messages.push(systemMsg);
-    saveMessagesToDisk();
-  }
-
-  // Broadcast to all connected clients
+  // Broadcast clean wipe to all connected clients
   io.emit('database-wiped', {
     reason,
     timestamp: new Date(),
-    systemMsg,
   });
 
-  return systemMsg;
+  return { wiped: true };
 }
 
 // API Routes
@@ -317,14 +302,15 @@ app.get('/api/messages', async (req, res) => {
   try {
     let msgs = [];
     if (isMongoConnected) {
-      msgs = await Message.find().sort({ createdAt: 1 }).limit(500);
+      msgs = await Message.find({ type: { $ne: 'system' } }).sort({ createdAt: 1 }).limit(500);
     } else {
-      msgs = inMemoryStore.messages;
+      msgs = inMemoryStore.messages.filter((m) => m.type !== 'system');
     }
     res.json(msgs);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
 // Send message via HTTP REST (Backup for WebSockets)
 app.post('/api/messages', async (req, res) => {
   try {
