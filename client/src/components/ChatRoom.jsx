@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, Lock, LogOut, Sparkles, ShieldAlert, Circle, Reply, X, CornerDownRight } from 'lucide-react';
+import { Send, Lock, LogOut, Sparkles, ShieldAlert, Circle, Reply, X, CornerDownRight, Eye, EyeOff, Shield } from 'lucide-react';
 
 export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped }) {
   const [messages, setMessages] = useState([]);
@@ -8,6 +8,8 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
   const [isTypingOther, setIsTypingOther] = useState(false);
   const [screenShield, setScreenShield] = useState(false);
   const [replyingTo, setReplyingTo] = useState(null); // { msgId, sender, text }
+  const [revealedMsgId, setRevealedMsgId] = useState(null); // Message currently being held
+  const [holdToRevealEnabled, setHoldToRevealEnabled] = useState(true); // Default to True for maximum anti-screenshot security
 
   const messagesEndRef = useRef(null);
   const typingTimeoutRef = useRef(null);
@@ -393,26 +395,52 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
           </div>
         </div>
 
-        {/* Logout Button */}
-        <button
-          onClick={onLogout}
-          style={{
-            padding: '6px 12px',
-            borderRadius: '10px',
-            border: '1px solid rgba(255, 255, 255, 0.1)',
-            background: 'rgba(255, 255, 255, 0.06)',
-            color: 'var(--text-muted)',
-            fontSize: '12px',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '5px',
-            minHeight: '34px',
-            touchAction: 'manipulation'
-          }}
-        >
-          <LogOut size={13} />
-          Exit
-        </button>
+        {/* Right Actions: Shield Toggle & Logout */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <button
+            type="button"
+            onClick={() => setHoldToRevealEnabled((prev) => !prev)}
+            style={{
+              padding: '5px 9px',
+              borderRadius: '9px',
+              border: holdToRevealEnabled ? '1px solid rgba(99, 102, 241, 0.4)' : '1px solid rgba(255, 255, 255, 0.1)',
+              background: holdToRevealEnabled ? 'rgba(99, 102, 241, 0.16)' : 'rgba(255, 255, 255, 0.05)',
+              color: holdToRevealEnabled ? '#a5b4fc' : 'var(--text-muted)',
+              fontSize: '11px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+              cursor: 'pointer',
+              touchAction: 'manipulation'
+            }}
+            title="Toggle Hold to Reveal Anti-Screenshot Shield"
+          >
+            <Shield size={12} color={holdToRevealEnabled ? '#818cf8' : '#94a3b8'} />
+            <span style={{ fontSize: '10.5px', fontWeight: '500' }}>
+              {holdToRevealEnabled ? 'Shield ON' : 'Shield OFF'}
+            </span>
+          </button>
+
+          <button
+            onClick={onLogout}
+            style={{
+              padding: '6px 10px',
+              borderRadius: '9px',
+              border: '1px solid rgba(255, 255, 255, 0.1)',
+              background: 'rgba(255, 255, 255, 0.06)',
+              color: 'var(--text-muted)',
+              fontSize: '12px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+              minHeight: '32px',
+              touchAction: 'manipulation'
+            }}
+          >
+            <LogOut size={13} />
+            Exit
+          </button>
+        </div>
       </div>
 
       {/* Chat Messages Body with Momentum Touch Scroll */}
@@ -440,11 +468,13 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
         ) : (
           uniqueMessages.map((msg, idx) => {
             const isMe = msg.sender === role;
+            const msgIdentifier = msg._id || msg.clientMsgId || idx;
+            const isRevealed = !holdToRevealEnabled || revealedMsgId === msgIdentifier;
 
             return (
               <div
-                id={`msg-${msg._id || msg.clientMsgId || idx}`}
-                key={msg._id || msg.clientMsgId || idx}
+                id={`msg-${msgIdentifier}`}
+                key={msgIdentifier}
                 style={{
                   display: 'flex',
                   flexDirection: 'column',
@@ -496,9 +526,15 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
                   </div>
                 )}
 
-                {/* Chat Bubble (+20% size increase, 50% white transparency, left aligned) */}
+                {/* Chat Bubble with Hold-to-Reveal Anti-Screenshot Protection */}
                 <div
-                  className="chat-bubble-white50"
+                  className={`chat-bubble-white50 ${isRevealed ? 'hold-bubble-active' : ''}`}
+                  onTouchStart={() => setRevealedMsgId(msgIdentifier)}
+                  onTouchEnd={() => setRevealedMsgId(null)}
+                  onTouchCancel={() => setRevealedMsgId(null)}
+                  onMouseDown={() => setRevealedMsgId(msgIdentifier)}
+                  onMouseUp={() => setRevealedMsgId(null)}
+                  onMouseLeave={() => setRevealedMsgId(null)}
                   style={{
                     padding: '7px 12px',
                     borderRadius: '12px',
@@ -508,10 +544,43 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
                     lineHeight: '1.4',
                     wordBreak: 'break-word',
                     display: 'inline-block',
-                    textAlign: 'left'
+                    textAlign: 'left',
+                    position: 'relative',
+                    cursor: holdToRevealEnabled ? 'pointer' : 'default',
+                    userSelect: 'none',
+                    WebkitUserSelect: 'none',
+                    touchAction: 'manipulation'
                   }}
                 >
-                  {msg.text}
+                  {/* Masked / Revealed Text */}
+                  <div className={isRevealed ? 'revealed-message' : 'masked-message'}>
+                    {msg.text}
+                  </div>
+
+                  {/* Hold to read subtle overlay when masked */}
+                  {!isRevealed && (
+                    <div style={{
+                      position: 'absolute',
+                      inset: 0,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '5px',
+                      fontSize: '9px',
+                      fontWeight: '600',
+                      color: '#ffffff',
+                      background: 'rgba(0, 0, 0, 0.45)',
+                      backdropFilter: 'blur(3px)',
+                      WebkitBackdropFilter: 'blur(3px)',
+                      borderRadius: '12px',
+                      padding: '0 8px',
+                      pointerEvents: 'none',
+                      letterSpacing: '0.2px'
+                    }}>
+                      <Eye size={10} color="#818cf8" />
+                      <span>Hold to read</span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Full Year, Date, Sent Time & Seen Time */}
