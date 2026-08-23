@@ -508,28 +508,44 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
                   {msg.text}
                 </div>
 
-                {/* Timestamp, Read / Seen Status & Reply Action Button */}
+                {/* Full Year, Date, Sent Time & Seen Time */}
                 <div style={{
                   display: 'flex',
                   alignItems: 'center',
+                  flexWrap: 'wrap',
                   gap: '6px',
                   marginTop: '3px',
                   paddingLeft: '3px',
                   paddingRight: '3px',
                   fontSize: '9px',
-                  color: 'rgba(255, 255, 255, 0.4)'
+                  color: 'rgba(255, 255, 255, 0.45)',
+                  lineHeight: '1.3'
                 }}>
                   <span>
-                    {new Date(msg.createdAt || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    {(() => {
+                      const d = new Date(msg.createdAt || Date.now());
+                      const yyyy = d.getFullYear();
+                      const mm = String(d.getMonth() + 1).padStart(2, '0');
+                      const dd = String(d.getDate()).padStart(2, '0');
+                      const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                      return `${yyyy}-${mm}-${dd} ${time}`;
+                    })()}
                   </span>
                   {isMe && (
                     <span style={{
-                      color: msg.seen ? '#818cf8' : 'rgba(255, 255, 255, 0.3)',
+                      color: msg.seen ? '#818cf8' : 'rgba(255, 255, 255, 0.35)',
                       fontWeight: msg.seen ? '600' : '400',
                       fontSize: '9px'
                     }}>
                       {msg.seen
-                        ? `• Seen ${new Date(msg.seenAt || msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                        ? (() => {
+                            const d = new Date(msg.seenAt || msg.createdAt);
+                            const yyyy = d.getFullYear();
+                            const mm = String(d.getMonth() + 1).padStart(2, '0');
+                            const dd = String(d.getDate()).padStart(2, '0');
+                            const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                            return `• Seen ${yyyy}-${mm}-${dd} ${time}`;
+                          })()
                         : '• Sent'}
                     </span>
                   )}
