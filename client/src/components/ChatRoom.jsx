@@ -42,8 +42,27 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
   const messagesEndRef = useRef(null);
   const typingTimeoutRef = useRef(null);
   const inputRef = useRef(null);
+  const chatContainerRef = useRef(null);
+  const isNearBottomRef = useRef(true);
+  const isInitialLoadRef = useRef(true);
 
   const otherRole = role === 'BOT1' ? 'BOT2' : 'BOT1';
+
+  // Smooth scroll to bottom helper
+  const scrollToBottom = (smooth = true) => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto' });
+    }
+  };
+
+  // Track if user is scrolling up to read old history
+  const handleChatScroll = () => {
+    const el = chatContainerRef.current;
+    if (!el) return;
+    const distanceToBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    // User is near bottom if within 120px
+    isNearBottomRef.current = distanceToBottom < 120;
+  };
 
   // Fetch initial chat history
   const fetchMessages = async () => {
@@ -113,7 +132,7 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
       setMessages((prev) =>
         prev.map((msg) => {
           if (msg.sender !== readerRole) {
-            return { ...msg, seen: true, seenAt: msg.seenAt || seenAt };
+            return { ...msg, seen: true, seenAt: seenAt || msg.seenAt };
           }
           return msg;
         })
@@ -125,7 +144,7 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
     });
 
     socket.on('user-typing', ({ sender, isTyping }) => {
-      if (sender !== role) {
+      if (sender === otherRole) {
         setIsTypingOther(isTyping);
       }
     });
@@ -209,10 +228,17 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
     };
   }, []);
 
-  // Scroll to bottom when messages update
+  // Smart Scroll Down: ONLY scroll down on initial load or if user is already at the bottom!
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, isTypingOther]);
+    if (isInitialLoadRef.current) {
+      if (messages.length > 0) {
+        scrollToBottom(false);
+        isInitialLoadRef.current = false;
+      }
+    } else if (isNearBottomRef.current) {
+      scrollToBottom(true);
+    }
+  }, [messages.length]);
 
   // Start replying to a message
   const handleStartReply = (msg) => {
@@ -261,9 +287,10 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
       createdAt: new Date().toISOString(),
     };
 
-    // 1. Instantly display in sender UI
+    // 1. Instantly display in sender UI and scroll to bottom
     setMessages((prev) => [...prev, optimisticMsg]);
     setInputText('');
+    scrollToBottom(true);
 
     // Clear typing status
     if (socket) {
@@ -490,16 +517,20 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
       </div>
 
       {/* Chat Messages Body with Momentum Touch Scroll */}
-      <div style={{
-        flex: 1,
-        minHeight: 0,
-        overflowY: 'auto',
-        WebkitOverflowScrolling: 'touch',
-        padding: '12px 12px',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '8px'
-      }}>
+      <div
+        ref={chatContainerRef}
+        onScroll={handleChatScroll}
+        style={{
+          flex: 1,
+          minHeight: 0,
+          overflowY: 'auto',
+          WebkitOverflowScrolling: 'touch',
+          padding: '12px 12px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '8px'
+        }}
+      >
         {uniqueMessages.length === 0 ? (
           <div style={{
             textAlign: 'center',
