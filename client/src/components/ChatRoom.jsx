@@ -9,6 +9,36 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
   const [screenShield, setScreenShield] = useState(false);
   const [replyingTo, setReplyingTo] = useState(null); // { msgId, sender, text }
 
+  // Persistent Dynamic Font Size (Default 15.5px, ranges 11px to 24px)
+  const [fontSize, setFontSize] = useState(() => {
+    try {
+      const saved = localStorage.getItem('chat_font_size_pref');
+      return saved ? parseFloat(saved) : 15.5;
+    } catch (e) {
+      return 15.5;
+    }
+  });
+
+  const handleIncreaseFont = () => {
+    setFontSize((prev) => {
+      const next = Math.min(prev + 1.5, 24);
+      try {
+        localStorage.setItem('chat_font_size_pref', next);
+      } catch (e) {}
+      return next;
+    });
+  };
+
+  const handleDecreaseFont = () => {
+    setFontSize((prev) => {
+      const next = Math.max(prev - 1.5, 11);
+      try {
+        localStorage.setItem('chat_font_size_pref', next);
+      } catch (e) {}
+      return next;
+    });
+  };
+
   const messagesEndRef = useRef(null);
   const typingTimeoutRef = useRef(null);
   const inputRef = useRef(null);
@@ -367,26 +397,96 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
           </div>
         </div>
 
-        {/* Logout Button */}
-        <button
-          onClick={onLogout}
-          style={{
-            padding: '6px 12px',
-            borderRadius: '10px',
-            border: '1px solid rgba(255, 255, 255, 0.1)',
-            background: 'rgba(255, 255, 255, 0.06)',
-            color: 'var(--text-muted)',
-            fontSize: '12px',
+        {/* Right Actions: Text Size (+ / -) Controller & Logout */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          {/* Dynamic Text Size Controller (+ / -) */}
+          <div style={{
             display: 'flex',
             alignItems: 'center',
-            gap: '5px',
-            minHeight: '34px',
-            touchAction: 'manipulation'
-          }}
-        >
-          <LogOut size={13} />
-          Exit
-        </button>
+            background: 'rgba(255, 255, 255, 0.07)',
+            borderRadius: '9px',
+            border: '1px solid rgba(255, 255, 255, 0.12)',
+            padding: '2px 4px',
+            gap: '2px'
+          }}>
+            <button
+              type="button"
+              onClick={handleDecreaseFont}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: '#a5b4fc',
+                width: '26px',
+                height: '26px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                borderRadius: '6px',
+                fontSize: '12.5px',
+                fontWeight: '700',
+                touchAction: 'manipulation'
+              }}
+              title="Decrease Text Size (-)"
+            >
+              A-
+            </button>
+
+            <span style={{
+              fontSize: '11px',
+              color: 'rgba(255, 255, 255, 0.65)',
+              minWidth: '22px',
+              textAlign: 'center',
+              fontWeight: '600'
+            }}>
+              {Math.round(fontSize)}
+            </span>
+
+            <button
+              type="button"
+              onClick={handleIncreaseFont}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: '#a5b4fc',
+                width: '26px',
+                height: '26px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                borderRadius: '6px',
+                fontSize: '13.5px',
+                fontWeight: '700',
+                touchAction: 'manipulation'
+              }}
+              title="Increase Text Size (+)"
+            >
+              A+
+            </button>
+          </div>
+
+          {/* Logout Button */}
+          <button
+            onClick={onLogout}
+            style={{
+              padding: '6px 11px',
+              borderRadius: '9px',
+              border: '1px solid rgba(255, 255, 255, 0.1)',
+              background: 'rgba(255, 255, 255, 0.06)',
+              color: 'var(--text-muted)',
+              fontSize: '12px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+              minHeight: '32px',
+              touchAction: 'manipulation'
+            }}
+          >
+            <LogOut size={13} />
+            Exit
+          </button>
+        </div>
       </div>
 
       {/* Chat Messages Body with Momentum Touch Scroll */}
@@ -448,7 +548,7 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
                     title="Click to jump to quoted message"
                   >
                     <div style={{
-                      fontSize: '11.5px',
+                      fontSize: `${Math.max(fontSize - 4, 10.5)}px`,
                       fontWeight: '700',
                       color: '#a5b4fc',
                       display: 'flex',
@@ -459,7 +559,7 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
                       <span>Reply</span>
                     </div>
                     <div style={{
-                      fontSize: '13px',
+                      fontSize: `${Math.max(fontSize - 2.5, 11.5)}px`,
                       color: 'rgba(255, 255, 255, 0.75)',
                       whiteSpace: 'nowrap',
                       overflow: 'hidden',
@@ -471,15 +571,15 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
                   </div>
                 )}
 
-                {/* Chat Bubble (+20% size increase on mobile, 50% white transparency, left aligned) */}
+                {/* Chat Bubble with Dynamic User Font Size */}
                 <div
                   className="chat-bubble-white50"
                   style={{
-                    padding: '9px 15px',
+                    padding: `${Math.round(fontSize * 0.58)}px ${Math.round(fontSize * 0.95)}px`,
                     borderRadius: '12px',
                     borderBottomLeftRadius: '2px',
                     borderLeft: isMe ? '3px solid #818cf8' : '1px solid rgba(255, 255, 255, 0.6)',
-                    fontSize: '15.5px',
+                    fontSize: `${fontSize}px`,
                     lineHeight: '1.45',
                     wordBreak: 'break-word',
                     display: 'inline-block',
