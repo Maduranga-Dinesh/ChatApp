@@ -17,6 +17,9 @@ const messageSchema = new mongoose.Schema(
     },
     clientMsgId: {
       type: String,
+      unique: true,
+      sparse: true,
+      index: true,
     },
     seen: {
       type: Boolean,
