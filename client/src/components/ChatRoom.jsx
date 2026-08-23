@@ -348,28 +348,15 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
         flexShrink: 0,
         zIndex: 10
       }}>
-        {/* User Identity & Peer Status */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        {/* Clean Chat Title & Online Status */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <div style={{
-            fontSize: '13px',
+            fontSize: '15px',
             fontWeight: '700',
             color: '#fff',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '5px'
+            letterSpacing: '0.3px'
           }}>
-            <span>{role}</span>
-            <span style={{
-              fontSize: '9.5px',
-              fontWeight: '600',
-              color: '#818cf8',
-              background: 'rgba(99, 102, 241, 0.18)',
-              border: '1px solid rgba(99, 102, 241, 0.35)',
-              padding: '2px 6px',
-              borderRadius: '6px'
-            }}>
-              (Me)
-            </span>
+            Chat
           </div>
 
           <div style={{
@@ -377,12 +364,12 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
             alignItems: 'center',
             gap: '5px',
             fontSize: '11px',
-            color: onlineUsers[otherRole] ? '#10b981' : 'var(--text-muted)',
-            borderLeft: '1px solid rgba(255, 255, 255, 0.1)',
-            paddingLeft: '8px'
+            color: '#10b981',
+            borderLeft: '1px solid rgba(255, 255, 255, 0.12)',
+            paddingLeft: '10px'
           }}>
-            <Circle size={6} fill={onlineUsers[otherRole] ? '#10b981' : '#64748b'} color="transparent" />
-            <span>{otherRole}: {onlineUsers[otherRole] ? 'Online' : 'Offline'}</span>
+            <Circle size={6} fill="#10b981" color="transparent" />
+            <span>Online</span>
           </div>
         </div>
 
@@ -450,30 +437,13 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
                   transition: 'background 0.3s'
                 }}
               >
-                {/* Sender tag with distinct role color */}
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  marginBottom: '2px',
-                  paddingLeft: '3px'
-                }}>
-                  <span style={{
-                    fontSize: '10px',
-                    fontWeight: '600',
-                    color: isMe ? '#a5b4fc' : '#38bdf8',
-                  }}>
-                    {isMe ? `${msg.sender} (Me)` : msg.sender}
-                  </span>
-                </div>
-
                 {/* Quoted / Replied-to Reference Box */}
                 {msg.replyTo && (
                   <div
                     onClick={() => scrollToMessage(msg.replyTo.msgId)}
                     style={{
                       background: 'rgba(0, 0, 0, 0.45)',
-                      borderLeft: `3px solid ${msg.replyTo.sender === role ? '#818cf8' : '#38bdf8'}`,
+                      borderLeft: '3px solid #818cf8',
                       borderRadius: '8px',
                       padding: '5px 9px',
                       marginBottom: '4px',
@@ -487,13 +457,13 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
                     <div style={{
                       fontSize: '9px',
                       fontWeight: '700',
-                      color: msg.replyTo.sender === role ? '#818cf8' : '#38bdf8',
+                      color: '#a5b4fc',
                       display: 'flex',
                       alignItems: 'center',
                       gap: '4px'
                     }}>
                       <CornerDownRight size={10} />
-                      <span>{msg.replyTo.sender === role ? `${msg.replyTo.sender} (You)` : msg.replyTo.sender}</span>
+                      <span>Reply</span>
                     </div>
                     <div style={{
                       fontSize: '9.5px',
@@ -515,6 +485,7 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
                     padding: '7px 12px',
                     borderRadius: '12px',
                     borderBottomLeftRadius: '2px',
+                    borderLeft: isMe ? '3px solid #818cf8' : '1px solid rgba(255, 255, 255, 0.6)',
                     fontSize: '10.5px',
                     lineHeight: '1.4',
                     wordBreak: 'break-word',
@@ -622,16 +593,16 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
             justifyContent: 'space-between',
             padding: '6px 12px',
             background: 'rgba(28, 28, 38, 0.95)',
-            borderLeft: `3px solid ${replyingTo.sender === role ? '#818cf8' : '#38bdf8'}`,
+            borderLeft: '3px solid #818cf8',
             borderRadius: '8px',
             marginBottom: '8px',
             gap: '8px'
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflow: 'hidden', flex: 1 }}>
-              <Reply size={13} color={replyingTo.sender === role ? '#818cf8' : '#38bdf8'} style={{ flexShrink: 0 }} />
+              <Reply size={13} color="#818cf8" style={{ flexShrink: 0 }} />
               <div style={{ overflow: 'hidden', fontSize: '11px', lineHeight: '1.3' }}>
-                <span style={{ fontWeight: '700', color: replyingTo.sender === role ? '#818cf8' : '#38bdf8', marginRight: '6px' }}>
-                  Replying to {replyingTo.sender === role ? `${replyingTo.sender} (You)` : replyingTo.sender}:
+                <span style={{ fontWeight: '700', color: '#a5b4fc', marginRight: '6px' }}>
+                  Replying:
                 </span>
                 <span style={{ color: 'rgba(255, 255, 255, 0.65)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   {replyingTo.text}
