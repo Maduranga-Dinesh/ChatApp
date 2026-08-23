@@ -464,7 +464,7 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
                       background: 'rgba(0, 0, 0, 0.45)',
                       borderLeft: '3px solid #818cf8',
                       borderRadius: '8px',
-                      padding: '5px 9px',
+                      padding: '6px 10px',
                       marginBottom: '4px',
                       cursor: 'pointer',
                       maxWidth: '100%',
@@ -474,19 +474,19 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
                     title="Click to jump to quoted message"
                   >
                     <div style={{
-                      fontSize: '9px',
+                      fontSize: '10.5px',
                       fontWeight: '700',
                       color: '#a5b4fc',
                       display: 'flex',
                       alignItems: 'center',
                       gap: '4px'
                     }}>
-                      <CornerDownRight size={10} />
+                      <CornerDownRight size={11} />
                       <span>Reply</span>
                     </div>
                     <div style={{
-                      fontSize: '9.5px',
-                      color: 'rgba(255, 255, 255, 0.7)',
+                      fontSize: '11.5px',
+                      color: 'rgba(255, 255, 255, 0.75)',
                       whiteSpace: 'nowrap',
                       overflow: 'hidden',
                       textOverflow: 'ellipsis',
@@ -501,12 +501,12 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
                 <div
                   className="chat-bubble-white50"
                   style={{
-                    padding: '7px 12px',
+                    padding: '8px 14px',
                     borderRadius: '12px',
                     borderBottomLeftRadius: '2px',
                     borderLeft: isMe ? '3px solid #818cf8' : '1px solid rgba(255, 255, 255, 0.6)',
-                    fontSize: '10.5px',
-                    lineHeight: '1.4',
+                    fontSize: '13px',
+                    lineHeight: '1.45',
                     wordBreak: 'break-word',
                     display: 'inline-block',
                     textAlign: 'left'
@@ -520,11 +520,11 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
                   display: 'flex',
                   alignItems: 'center',
                   flexWrap: 'wrap',
-                  gap: '6px',
+                  gap: '7px',
                   marginTop: '3px',
                   paddingLeft: '3px',
                   paddingRight: '3px',
-                  fontSize: '9px',
+                  fontSize: '10.5px',
                   color: 'rgba(255, 255, 255, 0.45)',
                   lineHeight: '1.3'
                 }}>
@@ -542,7 +542,7 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
                     <span style={{
                       color: msg.seen ? '#818cf8' : 'rgba(255, 255, 255, 0.35)',
                       fontWeight: msg.seen ? '600' : '400',
-                      fontSize: '9px'
+                      fontSize: '10.5px'
                     }}>
                       {msg.seen
                         ? (() => {
@@ -570,13 +570,13 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
                       display: 'inline-flex',
                       alignItems: 'center',
                       gap: '3px',
-                      fontSize: '9px',
+                      fontSize: '10.5px',
                       borderRadius: '4px',
                       touchAction: 'manipulation'
                     }}
                     title="Reply to this message"
                   >
-                    <Reply size={10} />
+                    <Reply size={11} />
                     <span>Reply</span>
                   </button>
                 </div>
