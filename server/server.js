@@ -28,7 +28,7 @@ app.use(cors());
 app.use(express.json());
 
 const PORT = process.env.PORT || 5000;
-const DEFAULT_PASSWORD = process.env.CHAT_PASSWORD || 'secret123';
+const DEFAULT_PASSWORD = process.env.CHAT_PASSWORD || process.env.PASSWORD || process.env.LOGIN_PASSWORD || 'secret123';
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/secretchat';
 
 // File-based persistent storage fallback
@@ -65,6 +65,10 @@ function loadDiskStorage() {
     if (fs.existsSync(SECURITY_FILE)) {
       const raw = fs.readFileSync(SECURITY_FILE, 'utf-8');
       inMemoryStore.security = { ...inMemoryStore.security, ...JSON.parse(raw) };
+      if (process.env.CHAT_PASSWORD || process.env.PASSWORD || process.env.LOGIN_PASSWORD) {
+        inMemoryStore.security.customPassword = DEFAULT_PASSWORD;
+        saveSecurityToDisk();
+      }
     }
     console.log(`📂 Disk Storage loaded: ${inMemoryStore.messages.length} messages found.`);
   } catch (err) {
@@ -110,6 +114,12 @@ async function initDatabase() {
         customPassword: DEFAULT_PASSWORD,
       });
       console.log(`Security state created in MongoDB. Default Password: "${DEFAULT_PASSWORD}"`);
+    } else if (process.env.CHAT_PASSWORD || process.env.PASSWORD || process.env.LOGIN_PASSWORD) {
+      if (sec.customPassword !== DEFAULT_PASSWORD) {
+        sec.customPassword = DEFAULT_PASSWORD;
+        await sec.save();
+        console.log(`🔑 Security password updated from environment variable: "${DEFAULT_PASSWORD}"`);
+      }
     }
   } catch (err) {
     console.log('⚠️ MongoDB server not active. Operating with Persistent File + High-Speed In-Memory Database.');
