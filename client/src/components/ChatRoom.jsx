@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, Lock, LogOut, Sparkles, ShieldAlert, Circle, Reply, X, CornerDownRight } from 'lucide-react';
+import { Send, Lock, LogOut, Sparkles, ShieldAlert, Circle, Reply, X, CornerDownRight, Clipboard } from 'lucide-react';
 
 export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped }) {
   const [messages, setMessages] = useState([]);
@@ -119,16 +119,26 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
     };
   }, [socket, role]);
 
-  // Anti-Screenshot & Anti-Screen-Record Protections
+  // Anti-Screenshot & Security Protections (Allows full pasting on PC & Mobile)
   useEffect(() => {
-    // 1. Prevent right-click / context menu
+    // 1. Allow right-click context menu ONLY on inputs/textareas for pasting
     const handleContextMenu = (e) => {
+      if (
+        e.target.tagName === 'INPUT' ||
+        e.target.tagName === 'TEXTAREA' ||
+        e.target.closest('input, textarea')
+      ) {
+        return true;
+      }
       e.preventDefault();
       return false;
     };
 
-    // 2. Prevent drag & drop of text/media
+    // 2. Prevent dragging out text/media
     const handleDragStart = (e) => {
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+        return true;
+      }
       e.preventDefault();
       return false;
     };
@@ -136,18 +146,14 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
     // 3. Intercept PrintScreen and screenshot shortcuts
     const handleKeyDown = (e) => {
       const isPrintScreen = e.key === 'PrintScreen' || e.keyCode === 44;
-      const isSnippingTool = (e.ctrlKey || e.metaKey) && e.shiftKey && ['S', 's', '3', '4', '5'].includes(e.key);
-      const isDevInspect = (e.ctrlKey || e.metaKey) && e.shiftKey && ['I', 'i', 'C', 'c', 'J', 'j'].includes(e.key);
-      const isPrintOrSave = (e.ctrlKey || e.metaKey) && ['p', 'P', 's', 'S', 'u', 'U'].includes(e.key);
+      const isSnippingTool =
+        (e.ctrlKey || e.metaKey) && e.shiftKey && ['S', 's', '3', '4', '5'].includes(e.key);
+      const isDevInspect =
+        (e.ctrlKey || e.metaKey) && e.shiftKey && ['I', 'i', 'C', 'c', 'J', 'j'].includes(e.key);
+      const isPrint = (e.ctrlKey || e.metaKey) && ['p', 'P'].includes(e.key);
 
-      if (isPrintScreen || isSnippingTool || isDevInspect || isPrintOrSave) {
+      if (isPrintScreen || isSnippingTool || isDevInspect || isPrint) {
         e.preventDefault();
-        try {
-          if (navigator.clipboard) {
-            navigator.clipboard.writeText('');
-          }
-        } catch (err) {}
-
         setScreenShield(true);
         setTimeout(() => setScreenShield(false), 2500);
       }
@@ -155,53 +161,21 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
 
     const handleKeyUp = (e) => {
       if (e.key === 'PrintScreen' || e.keyCode === 44) {
-        try {
-          if (navigator.clipboard) {
-            navigator.clipboard.writeText('');
-          }
-        } catch (err) {}
         setScreenShield(true);
         setTimeout(() => setScreenShield(false), 2500);
       }
-    };
-
-    // 4. Blackout on window blur / mobile app switcher / OS screenshot capture
-    const handleWindowBlur = () => {
-      setScreenShield(true);
-    };
-
-    const handleWindowFocus = () => {
-      setTimeout(() => {
-        setScreenShield(false);
-      }, 200);
-    };
-
-    // 5. Prevent copying text
-    const handleCopy = (e) => {
-      e.preventDefault();
-      try {
-        if (navigator.clipboard) {
-          navigator.clipboard.writeText('');
-        }
-      } catch (err) {}
     };
 
     window.addEventListener('contextmenu', handleContextMenu);
     window.addEventListener('dragstart', handleDragStart);
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
-    window.addEventListener('copy', handleCopy);
-    window.addEventListener('blur', handleWindowBlur);
-    window.addEventListener('focus', handleWindowFocus);
 
     return () => {
       window.removeEventListener('contextmenu', handleContextMenu);
       window.removeEventListener('dragstart', handleDragStart);
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
-      window.removeEventListener('copy', handleCopy);
-      window.removeEventListener('blur', handleWindowBlur);
-      window.removeEventListener('focus', handleWindowFocus);
     };
   }, []);
 
@@ -671,6 +645,42 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
           width: '100%',
           boxSizing: 'border-box'
         }}>
+          {/* Quick Paste Button */}
+          <button
+            type="button"
+            onClick={async () => {
+              try {
+                if (navigator.clipboard && navigator.clipboard.readText) {
+                  const text = await navigator.clipboard.readText();
+                  if (text) {
+                    setInputText((prev) => prev + text);
+                    inputRef.current?.focus();
+                  }
+                }
+              } catch (err) {
+                console.log('Clipboard paste note:', err);
+              }
+            }}
+            style={{
+              flexShrink: 0,
+              width: '42px',
+              height: '44px',
+              borderRadius: '12px',
+              border: '1px solid rgba(255, 255, 255, 0.12)',
+              background: 'rgba(255, 255, 255, 0.06)',
+              color: '#a5b4fc',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              touchAction: 'manipulation',
+              boxSizing: 'border-box'
+            }}
+            title="Paste copied text"
+          >
+            <Clipboard size={17} />
+          </button>
+
           {/* Text Input */}
           <input
             ref={inputRef}
