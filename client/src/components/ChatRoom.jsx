@@ -7,42 +7,11 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
   const [onlineUsers, setOnlineUsers] = useState({ BOT1: false, BOT2: false });
   const [isTypingOther, setIsTypingOther] = useState(false);
   const [screenShield, setScreenShield] = useState(false);
-  
-  // Track visualViewport for iOS software keyboard without clipping
-  const [viewportHeight, setViewportHeight] = useState(
-    typeof window !== 'undefined' && window.visualViewport
-      ? window.visualViewport.height
-      : typeof window !== 'undefined'
-      ? window.innerHeight
-      : '100dvh'
-  );
 
   const messagesEndRef = useRef(null);
   const typingTimeoutRef = useRef(null);
 
   const otherRole = role === 'BOT1' ? 'BOT2' : 'BOT1';
-
-  // iOS Safari Keyboard & VisualViewport resize handling
-  useEffect(() => {
-    if (!window.visualViewport) return;
-
-    const handleViewportChange = () => {
-      if (window.visualViewport) {
-        setViewportHeight(window.visualViewport.height);
-        setTimeout(() => {
-          messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-        }, 100);
-      }
-    };
-
-    window.visualViewport.addEventListener('resize', handleViewportChange);
-    window.visualViewport.addEventListener('scroll', handleViewportChange);
-
-    return () => {
-      window.visualViewport?.removeEventListener('resize', handleViewportChange);
-      window.visualViewport?.removeEventListener('scroll', handleViewportChange);
-    };
-  }, []);
 
   // Fetch initial chat history
   const fetchMessages = async () => {
@@ -209,21 +178,27 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
     }, 2000);
   };
 
+  // Smooth scroll to bottom on input focus (Keyboard appearance)
+  const handleInputFocus = () => {
+    setTimeout(() => {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, 300);
+  };
+
   return (
     <div style={{
       display: 'flex',
       flexDirection: 'column',
-      height: typeof viewportHeight === 'number' ? `${viewportHeight}px` : '100dvh',
-      maxHeight: typeof viewportHeight === 'number' ? `${viewportHeight}px` : '100dvh',
+      height: '100%',
+      minHeight: '100dvh',
+      maxHeight: '100dvh',
       width: '100%',
       maxWidth: '850px',
       margin: '0 auto',
       background: 'rgba(10, 10, 15, 0.95)',
-      position: 'fixed',
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
+      borderLeft: '1px solid rgba(255, 255, 255, 0.08)',
+      borderRight: '1px solid rgba(255, 255, 255, 0.08)',
+      position: 'relative',
       overflow: 'hidden'
     }}>
       {/* Anti-Screenshot Blackout Security Shield */}
@@ -331,9 +306,9 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
       {/* Chat Messages Body with Momentum Touch Scroll */}
       <div style={{
         flex: 1,
+        minHeight: 0,
         overflowY: 'auto',
         WebkitOverflowScrolling: 'touch',
-        overscrollBehaviorY: 'contain',
         padding: '12px 12px',
         display: 'flex',
         flexDirection: 'column',
@@ -466,7 +441,7 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Chat Input Bar - Adaptive to iOS Keyboard */}
+      {/* Chat Input Bar - Bottom Sticky */}
       <div style={{
         paddingTop: '8px',
         paddingBottom: 'max(10px, env(safe-area-inset-bottom))',
@@ -487,12 +462,13 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
           width: '100%',
           boxSizing: 'border-box'
         }}>
-          {/* Text Input - 16px font prevents iOS Safari auto-zoom, minWidth: 0 prevents pushing send button out */}
+          {/* Text Input */}
           <input
             type="text"
             placeholder="Type a secret message..."
             value={inputText}
             onChange={handleInputChange}
+            onFocus={handleInputFocus}
             style={{
               flex: 1,
               minWidth: 0,
@@ -509,7 +485,7 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
             }}
           />
 
-          {/* Send Button - flexShrink 0 ensures it is NEVER clipped or pushed out */}
+          {/* Send Button */}
           <button
             type="submit"
             disabled={!inputText.trim()}
