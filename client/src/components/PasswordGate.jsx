@@ -1,6 +1,15 @@
 import React, { useState } from 'react';
 import { Lock, Eye, EyeOff, ArrowRight } from 'lucide-react';
 
+function getOrCreateDeviceId() {
+  let id = localStorage.getItem('secret_chat_device_id');
+  if (!id) {
+    id = 'dev_' + Math.random().toString(36).substring(2, 12) + Date.now().toString(36);
+    localStorage.setItem('secret_chat_device_id', id);
+  }
+  return id;
+}
+
 export default function PasswordGate({ onLoginSuccess, onDatabaseWiped, statusInfo }) {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -20,10 +29,11 @@ export default function PasswordGate({ onLoginSuccess, onDatabaseWiped, statusIn
     setErrorMsg('');
 
     try {
+      const deviceId = getOrCreateDeviceId();
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password, role: 'auto' }),
+        body: JSON.stringify({ password, deviceId }),
       });
 
       const data = await res.json();

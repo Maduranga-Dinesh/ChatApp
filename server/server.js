@@ -159,24 +159,39 @@ app.get('/api/security/status', async (req, res) => {
 // Login API & Password Verification
 app.post('/api/auth/login', async (req, res) => {
   try {
-    const { password, role } = req.body;
+    const { password, deviceId } = req.body;
     const sec = await getSecState();
     const expectedPassword = sec.customPassword || DEFAULT_PASSWORD;
 
     if (password === expectedPassword) {
       sec.failedAttempts = 0;
-      await saveSecState(sec);
 
-      // Smart 1-to-1 Auto Role Assignment
-      // If BOT1 is currently active in the chat, assign incoming user as BOT2; otherwise assign BOT1
+      // Smart 1-to-1 Device-to-Role Mapping
       let assignedRole = 'BOT1';
-      if (activeUsers.BOT1 && !activeUsers.BOT2) {
-        assignedRole = 'BOT2';
-      } else if (!activeUsers.BOT1 && activeUsers.BOT2) {
-        assignedRole = 'BOT1';
-      } else if (activeUsers.BOT1 && activeUsers.BOT2) {
-        assignedRole = 'BOT2';
+
+      if (deviceId) {
+        if (sec.primaryDeviceId === deviceId) {
+          assignedRole = 'BOT1';
+        } else if (sec.secondaryDeviceId === deviceId) {
+          assignedRole = 'BOT2';
+        } else {
+          // New device registering
+          if (!sec.primaryDeviceId) {
+            sec.primaryDeviceId = deviceId;
+            assignedRole = 'BOT1';
+          } else if (!sec.secondaryDeviceId) {
+            sec.secondaryDeviceId = deviceId;
+            assignedRole = 'BOT2';
+          } else {
+            // Fallback if third device logs in
+            assignedRole = activeUsers.BOT1 ? 'BOT2' : 'BOT1';
+          }
+        }
+      } else {
+        assignedRole = activeUsers.BOT1 ? 'BOT2' : 'BOT1';
       }
+
+      await saveSecState(sec);
 
       return res.json({
         success: true,

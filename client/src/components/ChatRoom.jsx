@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, Lock, LogOut, Sparkles, ShieldAlert } from 'lucide-react';
+import { Send, Lock, LogOut, Sparkles, ShieldAlert, Circle } from 'lucide-react';
 
 export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped }) {
   const [messages, setMessages] = useState([]);
   const [inputText, setInputText] = useState('');
+  const [onlineUsers, setOnlineUsers] = useState({ BOT1: false, BOT2: false });
   const [isTypingOther, setIsTypingOther] = useState(false);
   const [screenShield, setScreenShield] = useState(false);
 
@@ -56,6 +57,10 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
       );
     });
 
+    socket.on('online-status', (status) => {
+      setOnlineUsers(status);
+    });
+
     socket.on('user-typing', ({ sender, isTyping }) => {
       if (sender !== role) {
         setIsTypingOther(isTyping);
@@ -73,6 +78,7 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
     return () => {
       socket.off('receive-message');
       socket.off('messages-seen-update');
+      socket.off('online-status');
       socket.off('user-typing');
       socket.off('database-wiped');
     };
@@ -214,7 +220,7 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
 
       {/* Top Navigation Bar */}
       <div style={{
-        padding: '14px 18px',
+        padding: '12px 18px',
         background: 'rgba(18, 18, 26, 0.9)',
         backdropFilter: 'blur(16px)',
         borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
@@ -223,28 +229,64 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
         justifyContent: 'space-between',
         zIndex: 10
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', marginLeft: 'auto' }}>
-          {/* Logout Button */}
-          <button
-            onClick={onLogout}
-            style={{
-              padding: '7px 14px',
-              borderRadius: '10px',
-              border: '1px solid rgba(255, 255, 255, 0.1)',
-              background: 'rgba(255, 255, 255, 0.05)',
-              color: 'var(--text-muted)',
-              fontSize: '13px',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              transition: 'background 0.2s ease'
-            }}
-          >
-            <LogOut size={14} />
-            Exit
-          </button>
+        {/* User Identity & Peer Status */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div style={{
+            fontSize: '13px',
+            fontWeight: '700',
+            color: '#fff',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px'
+          }}>
+            <span>{role}</span>
+            <span style={{
+              fontSize: '10px',
+              fontWeight: '600',
+              color: '#818cf8',
+              background: 'rgba(99, 102, 241, 0.15)',
+              border: '1px solid rgba(99, 102, 241, 0.3)',
+              padding: '2px 7px',
+              borderRadius: '8px'
+            }}>
+              (Me)
+            </span>
+          </div>
+
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '5px',
+            fontSize: '11px',
+            color: onlineUsers[otherRole] ? '#10b981' : 'var(--text-muted)',
+            borderLeft: '1px solid rgba(255, 255, 255, 0.1)',
+            paddingLeft: '10px'
+          }}>
+            <Circle size={7} fill={onlineUsers[otherRole] ? '#10b981' : '#64748b'} color="transparent" />
+            <span>{otherRole}: {onlineUsers[otherRole] ? 'Online' : 'Offline'}</span>
+          </div>
         </div>
+
+        {/* Logout Button */}
+        <button
+          onClick={onLogout}
+          style={{
+            padding: '7px 14px',
+            borderRadius: '10px',
+            border: '1px solid rgba(255, 255, 255, 0.1)',
+            background: 'rgba(255, 255, 255, 0.05)',
+            color: 'var(--text-muted)',
+            fontSize: '12px',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            transition: 'background 0.2s ease'
+          }}
+        >
+          <LogOut size={13} />
+          Exit
+        </button>
       </div>
 
       {/* Chat Messages Body */}
@@ -265,7 +307,7 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
           }}>
             <Lock size={36} style={{ margin: '0 auto 12px', opacity: 0.3 }} />
             <h3 style={{ fontSize: '14px', color: '#fff', marginBottom: '4px' }}>
-              Secret Chat Ready
+              Secret 1-to-1 Chat Ready
             </h3>
             <p style={{ fontSize: '11px', maxWidth: '260px', margin: '0 auto', opacity: 0.7 }}>
               No messages yet. Send a message to start secret conversation.
@@ -303,6 +345,19 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
                   alignSelf: isMe ? 'flex-end' : 'flex-start'
                 }}
               >
+                {/* Sender tag for partner's messages */}
+                {!isMe && (
+                  <span style={{
+                    fontSize: '9px',
+                    fontWeight: '600',
+                    color: '#818cf8',
+                    marginBottom: '2px',
+                    paddingLeft: '3px'
+                  }}>
+                    {msg.sender}
+                  </span>
+                )}
+
                 {/* Chat Bubble (+30% size, 50% white transparency) */}
                 <div
                   className={`chat-bubble-white50 ${isMe ? 'chat-bubble-me' : 'chat-bubble-other'}`}

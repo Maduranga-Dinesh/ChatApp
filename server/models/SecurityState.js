@@ -27,6 +27,14 @@ const securityStateSchema = new mongoose.Schema(
       type: String,
       default: 'secret123',
     },
+    primaryDeviceId: {
+      type: String,
+      default: null,
+    },
+    secondaryDeviceId: {
+      type: String,
+      default: null,
+    },
   },
   {
     timestamps: true,
