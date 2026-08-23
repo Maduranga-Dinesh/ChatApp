@@ -149,11 +149,34 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
         } catch (err) {}
 
         setScreenShield(true);
-        setTimeout(() => setScreenShield(false), 2000);
+        setTimeout(() => setScreenShield(false), 2500);
       }
     };
 
-    // 4. Prevent copying text
+    const handleKeyUp = (e) => {
+      if (e.key === 'PrintScreen' || e.keyCode === 44) {
+        try {
+          if (navigator.clipboard) {
+            navigator.clipboard.writeText('');
+          }
+        } catch (err) {}
+        setScreenShield(true);
+        setTimeout(() => setScreenShield(false), 2500);
+      }
+    };
+
+    // 4. Blackout on window blur / mobile app switcher / OS screenshot capture
+    const handleWindowBlur = () => {
+      setScreenShield(true);
+    };
+
+    const handleWindowFocus = () => {
+      setTimeout(() => {
+        setScreenShield(false);
+      }, 200);
+    };
+
+    // 5. Prevent copying text
     const handleCopy = (e) => {
       e.preventDefault();
       try {
@@ -166,13 +189,19 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
     window.addEventListener('contextmenu', handleContextMenu);
     window.addEventListener('dragstart', handleDragStart);
     window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
     window.addEventListener('copy', handleCopy);
+    window.addEventListener('blur', handleWindowBlur);
+    window.addEventListener('focus', handleWindowFocus);
 
     return () => {
       window.removeEventListener('contextmenu', handleContextMenu);
       window.removeEventListener('dragstart', handleDragStart);
       window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
       window.removeEventListener('copy', handleCopy);
+      window.removeEventListener('blur', handleWindowBlur);
+      window.removeEventListener('focus', handleWindowFocus);
     };
   }, []);
 
@@ -320,31 +349,8 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
       position: 'relative',
       overflow: 'hidden'
     }}>
-      {/* Anti-Screenshot Blackout Security Shield */}
-      {screenShield && (
-        <div style={{
-          position: 'fixed',
-          inset: 0,
-          background: '#000000',
-          zIndex: 99999,
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: '12px',
-          color: '#ef4444',
-          textAlign: 'center',
-          padding: '20px'
-        }}>
-          <ShieldAlert size={48} color="#ef4444" />
-          <h2 style={{ fontSize: '18px', fontWeight: '700', letterSpacing: '0.5px' }}>
-            SCREENSHOT / CAPTURE PROTECTED
-          </h2>
-          <p style={{ fontSize: '12px', color: '#94a3b8' }}>
-            Screen recording and captures are blocked for security.
-          </p>
-        </div>
-      )}
+      {/* Pure Blackout Anti-Screenshot Security Shield */}
+      {screenShield && <div className="pure-black-shield" />}
 
       {/* Top Navigation Bar with iOS Safe Area Top Padding */}
       <div style={{
