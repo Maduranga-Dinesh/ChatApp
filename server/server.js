@@ -314,7 +314,7 @@ app.get('/api/messages', async (req, res) => {
 // Send message via HTTP REST (Backup for WebSockets)
 app.post('/api/messages', async (req, res) => {
   try {
-    const { sender, text, clientMsgId } = req.body;
+    const { sender, text, clientMsgId, replyTo } = req.body;
     if (!text || !text.trim()) {
       return res.status(400).json({ error: 'Message text is required' });
     }
@@ -325,6 +325,7 @@ app.post('/api/messages', async (req, res) => {
       type: 'text',
       seen: false,
       seenAt: null,
+      replyTo: replyTo || null,
       clientMsgId: clientMsgId || Date.now().toString(),
       createdAt: new Date(),
     };
@@ -372,7 +373,7 @@ io.on('connection', (socket) => {
 
   socket.on('send-message', async (data) => {
     try {
-      const { sender, text, clientMsgId } = data;
+      const { sender, text, clientMsgId, replyTo } = data;
       if (!text || !text.trim()) return;
 
       const msgObj = {
@@ -381,6 +382,7 @@ io.on('connection', (socket) => {
         type: 'text',
         seen: false,
         seenAt: null,
+        replyTo: replyTo || null,
         clientMsgId,
         createdAt: new Date(),
       };

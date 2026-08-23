@@ -127,3 +127,14 @@ button, a {
   -webkit-backdrop-filter: blur(16px);
   border: 1px solid rgba(255, 255, 255, 0.08);
 }
+
+/* Highlight quoted message when clicked */
+@keyframes highlightFlash {
+  0% { background: rgba(99, 102, 241, 0.35); border-radius: 12px; }
+  100% { background: transparent; }
+}
+
+.highlight-reply {
+  animation: highlightFlash 1.8s ease-out;
+}
+

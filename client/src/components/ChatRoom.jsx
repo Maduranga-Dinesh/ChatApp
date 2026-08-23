@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, Lock, LogOut, Sparkles, ShieldAlert, Circle } from 'lucide-react';
+import { Send, Lock, LogOut, Sparkles, ShieldAlert, Circle, Reply, X, CornerDownRight } from 'lucide-react';
 
 export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped }) {
   const [messages, setMessages] = useState([]);
@@ -7,9 +7,11 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
   const [onlineUsers, setOnlineUsers] = useState({ BOT1: false, BOT2: false });
   const [isTypingOther, setIsTypingOther] = useState(false);
   const [screenShield, setScreenShield] = useState(false);
+  const [replyingTo, setReplyingTo] = useState(null); // { msgId, sender, text }
 
   const messagesEndRef = useRef(null);
   const typingTimeoutRef = useRef(null);
+  const inputRef = useRef(null);
 
   const otherRole = role === 'BOT1' ? 'BOT2' : 'BOT1';
 
@@ -179,11 +181,40 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isTypingOther]);
 
+  // Start replying to a message
+  const handleStartReply = (msg) => {
+    setReplyingTo({
+      msgId: msg._id || msg.clientMsgId,
+      sender: msg.sender,
+      text: msg.text,
+    });
+    inputRef.current?.focus();
+  };
+
+  // Cancel current reply
+  const handleCancelReply = () => {
+    setReplyingTo(null);
+  };
+
+  // Scroll to referenced message when clicking quote
+  const scrollToMessage = (targetId) => {
+    if (!targetId) return;
+    const el = document.getElementById(`msg-${targetId}`);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      el.classList.add('highlight-reply');
+      setTimeout(() => el.classList.remove('highlight-reply'), 1800);
+    }
+  };
+
   // Handle message sending with Optimistic UI & Dual Delivery
   const handleSendMessage = async (e) => {
     if (e) e.preventDefault();
     const textToSend = inputText.trim();
     if (!textToSend) return;
+
+    const currentReply = replyingTo ? { ...replyingTo } : null;
+    setReplyingTo(null);
 
     const clientMsgId = 'msg_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
     const optimisticMsg = {
@@ -193,6 +224,7 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
       type: 'text',
       seen: false,
       seenAt: null,
+      replyTo: currentReply,
       createdAt: new Date().toISOString(),
     };
 
@@ -211,6 +243,7 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
         sender: role,
         text: textToSend,
         clientMsgId,
+        replyTo: currentReply,
       });
     }
 
@@ -223,6 +256,7 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
           sender: role,
           text: textToSend,
           clientMsgId,
+          replyTo: currentReply,
         }),
       });
       if (res.ok) {
@@ -404,6 +438,7 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
 
             return (
               <div
+                id={`msg-${msg._id || msg.clientMsgId || idx}`}
                 key={msg._id || msg.clientMsgId || idx}
                 style={{
                   display: 'flex',
@@ -411,19 +446,67 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
                   alignItems: 'flex-start',
                   maxWidth: '85%',
                   alignSelf: 'flex-start',
-                  textAlign: 'left'
+                  textAlign: 'left',
+                  transition: 'background 0.3s'
                 }}
               >
                 {/* Sender tag with distinct role color */}
-                <span style={{
-                  fontSize: '10px',
-                  fontWeight: '600',
-                  color: isMe ? '#a5b4fc' : '#38bdf8',
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
                   marginBottom: '2px',
                   paddingLeft: '3px'
                 }}>
-                  {isMe ? `${msg.sender} (Me)` : msg.sender}
-                </span>
+                  <span style={{
+                    fontSize: '10px',
+                    fontWeight: '600',
+                    color: isMe ? '#a5b4fc' : '#38bdf8',
+                  }}>
+                    {isMe ? `${msg.sender} (Me)` : msg.sender}
+                  </span>
+                </div>
+
+                {/* Quoted / Replied-to Reference Box */}
+                {msg.replyTo && (
+                  <div
+                    onClick={() => scrollToMessage(msg.replyTo.msgId)}
+                    style={{
+                      background: 'rgba(0, 0, 0, 0.45)',
+                      borderLeft: `3px solid ${msg.replyTo.sender === role ? '#818cf8' : '#38bdf8'}`,
+                      borderRadius: '8px',
+                      padding: '5px 9px',
+                      marginBottom: '4px',
+                      cursor: 'pointer',
+                      maxWidth: '100%',
+                      overflow: 'hidden',
+                      boxShadow: '0 2px 8px rgba(0,0,0,0.2)'
+                    }}
+                    title="Click to jump to quoted message"
+                  >
+                    <div style={{
+                      fontSize: '9px',
+                      fontWeight: '700',
+                      color: msg.replyTo.sender === role ? '#818cf8' : '#38bdf8',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px'
+                    }}>
+                      <CornerDownRight size={10} />
+                      <span>{msg.replyTo.sender === role ? `${msg.replyTo.sender} (You)` : msg.replyTo.sender}</span>
+                    </div>
+                    <div style={{
+                      fontSize: '9.5px',
+                      color: 'rgba(255, 255, 255, 0.7)',
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      marginTop: '1px'
+                    }}>
+                      {msg.replyTo.text}
+                    </div>
+                  </div>
+                )}
 
                 {/* Chat Bubble (+20% size increase, 50% white transparency, left aligned) */}
                 <div
@@ -442,11 +525,11 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
                   {msg.text}
                 </div>
 
-                {/* Timestamp & Read / Seen Status */}
+                {/* Timestamp, Read / Seen Status & Reply Action Button */}
                 <div style={{
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '5px',
+                  gap: '6px',
                   marginTop: '3px',
                   paddingLeft: '3px',
                   paddingRight: '3px',
@@ -467,6 +550,29 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
                         : '• Sent'}
                     </span>
                   )}
+                  
+                  {/* Reply Button */}
+                  <button
+                    type="button"
+                    onClick={() => handleStartReply(msg)}
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      color: 'rgba(255, 255, 255, 0.45)',
+                      cursor: 'pointer',
+                      padding: '1px 4px',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '3px',
+                      fontSize: '9px',
+                      borderRadius: '4px',
+                      touchAction: 'manipulation'
+                    }}
+                    title="Reply to this message"
+                  >
+                    <Reply size={10} />
+                    <span>Reply</span>
+                  </button>
                 </div>
               </div>
             );
@@ -508,6 +614,50 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
         width: '100%',
         boxSizing: 'border-box'
       }}>
+        {/* Active Reply Banner */}
+        {replyingTo && (
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '6px 12px',
+            background: 'rgba(28, 28, 38, 0.95)',
+            borderLeft: `3px solid ${replyingTo.sender === role ? '#818cf8' : '#38bdf8'}`,
+            borderRadius: '8px',
+            marginBottom: '8px',
+            gap: '8px'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflow: 'hidden', flex: 1 }}>
+              <Reply size={13} color={replyingTo.sender === role ? '#818cf8' : '#38bdf8'} style={{ flexShrink: 0 }} />
+              <div style={{ overflow: 'hidden', fontSize: '11px', lineHeight: '1.3' }}>
+                <span style={{ fontWeight: '700', color: replyingTo.sender === role ? '#818cf8' : '#38bdf8', marginRight: '6px' }}>
+                  Replying to {replyingTo.sender === role ? `${replyingTo.sender} (You)` : replyingTo.sender}:
+                </span>
+                <span style={{ color: 'rgba(255, 255, 255, 0.65)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {replyingTo.text}
+                </span>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={handleCancelReply}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: 'rgba(255, 255, 255, 0.5)',
+                cursor: 'pointer',
+                padding: '4px',
+                display: 'flex',
+                alignItems: 'center',
+                touchAction: 'manipulation'
+              }}
+              title="Cancel Reply"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        )}
+
         <form onSubmit={handleSendMessage} style={{
           display: 'flex',
           alignItems: 'center',
@@ -517,6 +667,7 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
         }}>
           {/* Text Input */}
           <input
+            ref={inputRef}
             type="text"
             placeholder="Type a message..."
             value={inputText}
