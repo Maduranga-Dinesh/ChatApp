@@ -167,9 +167,20 @@ app.post('/api/auth/login', async (req, res) => {
       sec.failedAttempts = 0;
       await saveSecState(sec);
 
+      // Smart 1-to-1 Auto Role Assignment
+      // If BOT1 is currently active in the chat, assign incoming user as BOT2; otherwise assign BOT1
+      let assignedRole = 'BOT1';
+      if (activeUsers.BOT1 && !activeUsers.BOT2) {
+        assignedRole = 'BOT2';
+      } else if (!activeUsers.BOT1 && activeUsers.BOT2) {
+        assignedRole = 'BOT1';
+      } else if (activeUsers.BOT1 && activeUsers.BOT2) {
+        assignedRole = 'BOT2';
+      }
+
       return res.json({
         success: true,
-        role: role === 'BOT1' ? 'BOT1' : 'BOT2',
+        role: assignedRole,
         message: 'Access Granted',
       });
     } else {

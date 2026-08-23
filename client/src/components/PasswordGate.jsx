@@ -23,7 +23,7 @@ export default function PasswordGate({ onLoginSuccess, onDatabaseWiped, statusIn
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password, role: 'BOT1' }),
+        body: JSON.stringify({ password, role: 'auto' }),
       });
 
       const data = await res.json();
