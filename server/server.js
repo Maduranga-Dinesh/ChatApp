@@ -325,6 +325,44 @@ app.get('/api/messages', async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+// Send message via HTTP REST (Backup for WebSockets)
+app.post('/api/messages', async (req, res) => {
+  try {
+    const { sender, text, clientMsgId } = req.body;
+    if (!text || !text.trim()) {
+      return res.status(400).json({ error: 'Message text is required' });
+    }
+
+    const msgObj = {
+      sender: (sender === 'BOT2' ? 'BOT2' : 'BOT1'),
+      text: text.trim(),
+      type: 'text',
+      seen: false,
+      seenAt: null,
+      clientMsgId: clientMsgId || Date.now().toString(),
+      createdAt: new Date(),
+    };
+
+    let savedMsg = msgObj;
+    if (isMongoConnected) {
+      try {
+        savedMsg = await Message.create(msgObj);
+      } catch (dbErr) {
+        console.error('Mongo save error, saving to memory:', dbErr);
+        inMemoryStore.messages.push(msgObj);
+        saveMessagesToDisk();
+      }
+    } else {
+      inMemoryStore.messages.push(msgObj);
+      saveMessagesToDisk();
+    }
+
+    io.emit('receive-message', savedMsg);
+    res.json(savedMsg);
+  } catch (err) {
+    console.error('Failed to send message via API:', err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Online Users Tracking
@@ -363,7 +401,13 @@ io.on('connection', (socket) => {
 
       let savedMsg = msgObj;
       if (isMongoConnected) {
-        savedMsg = await Message.create(msgObj);
+        try {
+          savedMsg = await Message.create(msgObj);
+        } catch (dbErr) {
+          console.error('Mongo save error in socket, fallback to memory:', dbErr);
+          inMemoryStore.messages.push(msgObj);
+          saveMessagesToDisk();
+        }
       } else {
         inMemoryStore.messages.push(msgObj);
         saveMessagesToDisk();

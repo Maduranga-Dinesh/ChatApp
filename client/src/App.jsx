@@ -32,8 +32,14 @@ export default function App() {
     setUserRole(role);
     setUserPassword(password);
     
-    // Connect Socket.io
-    const newSocket = io();
+    // Connect Socket.io with websocket + polling fallback and auto-reconnect
+    const newSocket = io({
+      transports: ['websocket', 'polling'],
+      reconnection: true,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 1000,
+      timeout: 10000,
+    });
     socketRef.current = newSocket;
     setSocket(newSocket);
 

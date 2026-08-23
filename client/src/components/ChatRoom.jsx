@@ -33,14 +33,45 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
   useEffect(() => {
     fetchMessages();
 
-    if (!socket) return;
+    // Background auto-sync every 4 seconds for reliable multi-device sync
+    const syncInterval = setInterval(() => {
+      fetchMessages();
+    }, 4000);
 
-    socket.emit('join-room', { role });
-    socket.emit('mark-seen', { readerRole: role });
+    if (!socket) {
+      return () => clearInterval(syncInterval);
+    }
+
+    const handleConnect = () => {
+      socket.emit('join-room', { role });
+      socket.emit('mark-seen', { readerRole: role });
+      fetchMessages();
+    };
+
+    socket.on('connect', handleConnect);
+    if (socket.connected) {
+      handleConnect();
+    }
 
     socket.on('receive-message', (newMsg) => {
-      setMessages((prev) => [...prev, newMsg]);
-      // If the received message was from the other user, instantly mark as seen
+      setMessages((prev) => {
+        const exists = prev.some(
+          (m) =>
+            (newMsg._id && m._id === newMsg._id) ||
+            (newMsg.clientMsgId && m.clientMsgId === newMsg.clientMsgId)
+        );
+        if (exists) {
+          return prev.map((m) =>
+            (newMsg._id && m._id === newMsg._id) ||
+            (newMsg.clientMsgId && m.clientMsgId === newMsg.clientMsgId)
+              ? newMsg
+              : m
+          );
+        }
+        return [...prev, newMsg];
+      });
+
+      // If the received message was from the other user, mark as seen
       if (newMsg.sender !== role) {
         socket.emit('mark-seen', { readerRole: role });
       }
@@ -76,6 +107,8 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
     });
 
     return () => {
+      clearInterval(syncInterval);
+      socket.off('connect', handleConnect);
       socket.off('receive-message');
       socket.off('messages-seen-update');
       socket.off('online-status');
@@ -146,23 +179,61 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isTypingOther]);
 
-  // Handle message sending
-  const handleSendMessage = (e) => {
-    e.preventDefault();
-    if (!inputText.trim()) return;
+  // Handle message sending with Optimistic UI & Dual Delivery
+  const handleSendMessage = async (e) => {
+    if (e) e.preventDefault();
+    const textToSend = inputText.trim();
+    if (!textToSend) return;
 
-    const clientMsgId = Date.now().toString();
-    const payload = {
-      sender: role,
-      text: inputText.trim(),
+    const clientMsgId = 'msg_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
+    const optimisticMsg = {
       clientMsgId,
+      sender: role,
+      text: textToSend,
+      type: 'text',
+      seen: false,
+      seenAt: null,
+      createdAt: new Date().toISOString(),
     };
 
-    socket.emit('send-message', payload);
+    // 1. Instantly display in sender UI
+    setMessages((prev) => [...prev, optimisticMsg]);
     setInputText('');
 
     // Clear typing status
-    socket.emit('typing', { sender: role, isTyping: false });
+    if (socket) {
+      socket.emit('typing', { sender: role, isTyping: false });
+    }
+
+    // 2. Deliver via Socket.io
+    if (socket && socket.connected) {
+      socket.emit('send-message', {
+        sender: role,
+        text: textToSend,
+        clientMsgId,
+      });
+    }
+
+    // 3. Always back up delivery via HTTP API
+    try {
+      const res = await fetch('/api/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sender: role,
+          text: textToSend,
+          clientMsgId,
+        }),
+      });
+      if (res.ok) {
+        const saved = await res.json();
+        setMessages((prev) =>
+          prev.map((m) => (m.clientMsgId === clientMsgId ? saved : m))
+        );
+      }
+    } catch (err) {
+      console.error('HTTP backup send error:', err);
+    }
   };
 
   // Handle typing indicator
