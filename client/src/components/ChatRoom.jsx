@@ -237,7 +237,7 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
       socket.emit('typing', { sender: role, isTyping: false });
     }
 
-    // 2. Deliver via Socket.io
+    // 2. Deliver via Socket.io (if connected)
     if (socket && socket.connected) {
       socket.emit('send-message', {
         sender: role,
@@ -245,28 +245,28 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
         clientMsgId,
         replyTo: currentReply,
       });
-    }
-
-    // 3. Always back up delivery via HTTP API
-    try {
-      const res = await fetch('/api/messages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sender: role,
-          text: textToSend,
-          clientMsgId,
-          replyTo: currentReply,
-        }),
-      });
-      if (res.ok) {
-        const saved = await res.json();
-        setMessages((prev) =>
-          prev.map((m) => (m.clientMsgId === clientMsgId ? saved : m))
-        );
+    } else {
+      // 3. Fallback to HTTP REST only if socket is offline
+      try {
+        const res = await fetch('/api/messages', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sender: role,
+            text: textToSend,
+            clientMsgId,
+            replyTo: currentReply,
+          }),
+        });
+        if (res.ok) {
+          const saved = await res.json();
+          setMessages((prev) =>
+            prev.map((m) => (m.clientMsgId === clientMsgId ? saved : m))
+          );
+        }
+      } catch (err) {
+        console.error('HTTP fallback send error:', err);
       }
-    } catch (err) {
-      console.error('HTTP backup send error:', err);
     }
   };
 
@@ -289,6 +289,20 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, 300);
   };
+
+  // Strictly deduplicated list of messages
+  const uniqueMessages = React.useMemo(() => {
+    const list = [];
+    const seen = new Set();
+    for (const m of messages) {
+      if (m.type === 'system') continue;
+      const key = m._id || m.clientMsgId;
+      if (key && seen.has(key)) continue;
+      if (key) seen.add(key);
+      list.push(m);
+    }
+    return list;
+  }, [messages]);
 
   return (
     <div style={{
@@ -406,7 +420,7 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
         flexDirection: 'column',
         gap: '8px'
       }}>
-        {messages.filter((m) => m.type !== 'system').length === 0 ? (
+        {uniqueMessages.length === 0 ? (
           <div style={{
             textAlign: 'center',
             margin: 'auto',
@@ -418,10 +432,8 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
             </p>
           </div>
         ) : (
-          messages
-            .filter((m) => m.type !== 'system')
-            .map((msg, idx) => {
-              const isMe = msg.sender === role;
+          uniqueMessages.map((msg, idx) => {
+            const isMe = msg.sender === role;
 
             return (
               <div

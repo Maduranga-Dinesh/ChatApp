@@ -319,6 +319,17 @@ app.post('/api/messages', async (req, res) => {
       return res.status(400).json({ error: 'Message text is required' });
     }
 
+    // Deduplicate if already processed
+    if (clientMsgId) {
+      if (isMongoConnected) {
+        const existing = await Message.findOne({ clientMsgId });
+        if (existing) return res.json(existing);
+      } else {
+        const existing = inMemoryStore.messages.find((m) => m.clientMsgId === clientMsgId);
+        if (existing) return res.json(existing);
+      }
+    }
+
     const msgObj = {
       sender: (sender === 'BOT2' ? 'BOT2' : 'BOT1'),
       text: text.trim(),
@@ -375,6 +386,17 @@ io.on('connection', (socket) => {
     try {
       const { sender, text, clientMsgId, replyTo } = data;
       if (!text || !text.trim()) return;
+
+      // Deduplicate if already saved
+      if (clientMsgId) {
+        if (isMongoConnected) {
+          const existing = await Message.findOne({ clientMsgId });
+          if (existing) return;
+        } else {
+          const existing = inMemoryStore.messages.find((m) => m.clientMsgId === clientMsgId);
+          if (existing) return;
+        }
+      }
 
       const msgObj = {
         sender,
