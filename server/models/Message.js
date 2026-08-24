@@ -9,11 +9,27 @@ const messageSchema = new mongoose.Schema(
     },
     text: {
       type: String,
-      required: true,
+      default: '',
     },
     type: {
       type: String,
-      default: 'text', // 'text', 'system', 'file'
+      default: 'text', // 'text', 'system', 'file', 'audio'
+    },
+    audioData: {
+      type: String,
+      default: null,
+    },
+    audioDuration: {
+      type: Number,
+      default: 0,
+    },
+    listened: {
+      type: Boolean,
+      default: false,
+    },
+    listenedAt: {
+      type: Date,
+      default: null,
     },
     clientMsgId: {
       type: String,

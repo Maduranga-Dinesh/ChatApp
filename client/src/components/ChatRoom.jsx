@@ -1,5 +1,196 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, Lock, LogOut, Sparkles, ShieldAlert, Circle, Reply, X, CornerDownRight, Clipboard } from 'lucide-react';
+import { Send, Lock, LogOut, Sparkles, ShieldAlert, Circle, Reply, X, CornerDownRight, Clipboard, Mic, Play, Pause, Trash2, Clock } from 'lucide-react';
+
+// Custom Interactive Audio Player Component
+function VoiceMessagePlayer({ msg, isMe, socket, role }) {
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(msg.audioDuration || 0);
+  const audioRef = useRef(null);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    const handleLoadedMetadata = () => {
+      if (audio.duration && !isNaN(audio.duration) && isFinite(audio.duration)) {
+        setDuration(audio.duration);
+      }
+    };
+
+    const handleTimeUpdate = () => {
+      setCurrentTime(audio.currentTime);
+    };
+
+    const handleEnded = () => {
+      setIsPlaying(false);
+      setCurrentTime(0);
+    };
+
+    audio.addEventListener('loadedmetadata', handleLoadedMetadata);
+    audio.addEventListener('timeupdate', handleTimeUpdate);
+    audio.addEventListener('ended', handleEnded);
+
+    return () => {
+      audio.removeEventListener('loadedmetadata', handleLoadedMetadata);
+      audio.removeEventListener('timeupdate', handleTimeUpdate);
+      audio.removeEventListener('ended', handleEnded);
+    };
+  }, []);
+
+  const togglePlay = () => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    if (isPlaying) {
+      audio.pause();
+      setIsPlaying(false);
+    } else {
+      audio.play().then(() => {
+        setIsPlaying(true);
+        // Mark as listened if recipient is playing for the first time
+        if (msg.sender !== role && !msg.listened) {
+          if (socket && socket.connected) {
+            socket.emit('mark-audio-listened', {
+              msgId: msg._id,
+              clientMsgId: msg.clientMsgId,
+              readerRole: role,
+            });
+          }
+          fetch('/api/messages/mark-audio-listened', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ msgId: msg._id, clientMsgId: msg.clientMsgId }),
+          }).catch(() => {});
+        }
+      }).catch((err) => {
+        console.error('Audio playback failed:', err);
+      });
+    }
+  };
+
+  const handleSeek = (e) => {
+    const audio = audioRef.current;
+    const target = parseFloat(e.target.value);
+    if (audio) {
+      audio.currentTime = target;
+      setCurrentTime(target);
+    }
+  };
+
+  const formatTime = (secs) => {
+    if (isNaN(secs) || !isFinite(secs)) return '0:00';
+    const m = Math.floor(secs / 60);
+    const s = Math.floor(secs % 60);
+    return `${m}:${s < 10 ? '0' : ''}${s}`;
+  };
+
+  // Expiration calculation (3 days after listened)
+  const getExpiryText = () => {
+    if (msg.listened && msg.listenedAt) {
+      const listenedMs = new Date(msg.listenedAt).getTime();
+      const diffMs = (3 * 24 * 60 * 60 * 1000) - (Date.now() - listenedMs);
+      if (diffMs <= 0) return 'Expiring soon';
+      const hours = Math.floor(diffMs / (3600 * 1000));
+      const days = Math.floor(hours / 24);
+      if (days >= 1) return `Expires in ${days}d ${hours % 24}h`;
+      return `Expires in ${hours}h`;
+    }
+    return '3d expiry after play';
+  };
+
+  return (
+    <div style={{
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '6px',
+      minWidth: '220px',
+      maxWidth: '310px',
+      padding: '4px 2px'
+    }}>
+      <audio ref={audioRef} src={msg.audioData} preload="metadata" />
+
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: '10px'
+      }}>
+        {/* Play/Pause Button */}
+        <button
+          type="button"
+          onClick={togglePlay}
+          style={{
+            width: '36px',
+            height: '36px',
+            borderRadius: '50%',
+            border: 'none',
+            background: isPlaying ? '#10b981' : (isMe ? '#6366f1' : '#3b82f6'),
+            color: '#fff',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+            flexShrink: 0,
+            boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+            transition: 'all 0.2s ease',
+          }}
+          title={isPlaying ? 'Pause' : 'Play voice note'}
+        >
+          {isPlaying ? <Pause size={16} /> : <Play size={16} style={{ marginLeft: '2px' }} />}
+        </button>
+
+        {/* Scrubber & Time */}
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '3px' }}>
+          <input
+            type="range"
+            min="0"
+            max={duration || 1}
+            step="0.1"
+            value={currentTime}
+            onChange={handleSeek}
+            style={{
+              width: '100%',
+              accentColor: '#10b981',
+              cursor: 'pointer',
+              height: '4px'
+            }}
+          />
+          <div style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            fontSize: '10px',
+            color: 'rgba(255, 255, 255, 0.75)',
+            fontFamily: 'monospace'
+          }}>
+            <span>{formatTime(currentTime)}</span>
+            <span>{formatTime(duration)}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Expiry & Listened status badge */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        fontSize: '9.5px',
+        color: msg.listened ? '#34d399' : 'rgba(255, 255, 255, 0.55)',
+        paddingTop: '3px',
+        borderTop: '1px solid rgba(255, 255, 255, 0.1)'
+      }}>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+          <Clock size={10} />
+          <span>{getExpiryText()}</span>
+        </span>
+        {msg.listened && (
+          <span style={{ color: '#34d399', fontWeight: '600' }}>
+            ✓ Listened
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
 
 export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped }) {
   const [messages, setMessages] = useState([]);
@@ -8,6 +199,14 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
   const [isTypingOther, setIsTypingOther] = useState(false);
   const [screenShield, setScreenShield] = useState(false);
   const [replyingTo, setReplyingTo] = useState(null); // { msgId, sender, text }
+
+  // Audio Recording States
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingDuration, setRecordingDuration] = useState(0);
+  const mediaRecorderRef = useRef(null);
+  const audioChunksRef = useRef([]);
+  const recordingTimerRef = useRef(null);
+  const audioStreamRef = useRef(null);
 
   // Persistent Dynamic Font Size (Default 15.5px, ranges 11px to 24px)
   const [fontSize, setFontSize] = useState(() => {
@@ -149,6 +348,32 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
       }
     });
 
+    socket.on('audio-listened-update', ({ msgId, clientMsgId, listenedAt }) => {
+      setMessages((prev) =>
+        prev.map((msg) => {
+          if (
+            (msgId && (msg._id === msgId || String(msg._id) === String(msgId))) ||
+            (clientMsgId && msg.clientMsgId === clientMsgId)
+          ) {
+            return { ...msg, listened: true, listenedAt: listenedAt || new Date() };
+          }
+          return msg;
+        })
+      );
+    });
+
+    socket.on('messages-deleted', ({ deletedIds }) => {
+      if (Array.isArray(deletedIds) && deletedIds.length > 0) {
+        setMessages((prev) =>
+          prev.filter(
+            (msg) =>
+              !deletedIds.includes(String(msg._id)) &&
+              !deletedIds.includes(String(msg.clientMsgId))
+          )
+        );
+      }
+    });
+
     socket.on('database-wiped', (data) => {
       setMessages([]);
       if (data.systemMsg) {
@@ -162,6 +387,8 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
       socket.off('connect', handleConnect);
       socket.off('receive-message');
       socket.off('messages-seen-update');
+      socket.off('audio-listened-update');
+      socket.off('messages-deleted');
       socket.off('online-status');
       socket.off('user-typing');
       socket.off('database-wiped');
@@ -245,10 +472,157 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
     setReplyingTo({
       msgId: msg._id || msg.clientMsgId,
       sender: msg.sender,
-      text: msg.text,
+      text: msg.type === 'audio' ? '🎤 Voice Note' : (msg.text ? msg.text.substring(0, 100) : 'Voice Note'),
     });
     inputRef.current?.focus();
   };
+
+  // Audio Recording Methods
+  const startRecording = async () => {
+    try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        alert('Voice recording is not supported in this browser.');
+        return;
+      }
+
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      audioStreamRef.current = stream;
+
+      let mimeType = 'audio/webm;codecs=opus';
+      if (!MediaRecorder.isTypeSupported(mimeType)) {
+        mimeType = MediaRecorder.isTypeSupported('audio/mp4')
+          ? 'audio/mp4'
+          : (MediaRecorder.isTypeSupported('audio/ogg') ? 'audio/ogg' : '');
+      }
+
+      const options = mimeType ? { mimeType } : {};
+      const recorder = new MediaRecorder(stream, options);
+      mediaRecorderRef.current = recorder;
+      audioChunksRef.current = [];
+
+      recorder.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) {
+          audioChunksRef.current.push(e.data);
+        }
+      };
+
+      recorder.start(250);
+      setIsRecording(true);
+      setRecordingDuration(0);
+
+      const startTime = Date.now();
+      recordingTimerRef.current = setInterval(() => {
+        const elapsed = Math.floor((Date.now() - startTime) / 1000);
+        setRecordingDuration(elapsed);
+        if (elapsed >= 300) {
+          stopAndSendRecording();
+        }
+      }, 500);
+    } catch (err) {
+      console.error('Microphone access error:', err);
+      alert('Could not access microphone. Please allow microphone permissions.');
+    }
+  };
+
+  const cancelRecording = () => {
+    if (recordingTimerRef.current) {
+      clearInterval(recordingTimerRef.current);
+      recordingTimerRef.current = null;
+    }
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.onstop = null;
+      mediaRecorderRef.current.stop();
+    }
+    if (audioStreamRef.current) {
+      audioStreamRef.current.getTracks().forEach((track) => track.stop());
+      audioStreamRef.current = null;
+    }
+    setIsRecording(false);
+    setRecordingDuration(0);
+    audioChunksRef.current = [];
+  };
+
+  const stopAndSendRecording = () => {
+    if (recordingTimerRef.current) {
+      clearInterval(recordingTimerRef.current);
+      recordingTimerRef.current = null;
+    }
+
+    const recorder = mediaRecorderRef.current;
+    if (!recorder || recorder.state === 'inactive') {
+      cancelRecording();
+      return;
+    }
+
+    recorder.onstop = async () => {
+      try {
+        const mimeType = recorder.mimeType || 'audio/webm';
+        const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
+        if (audioBlob.size < 100) {
+          cancelRecording();
+          return;
+        }
+
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const base64Audio = reader.result;
+          const clientMsgId = 'msg_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
+          const currentReply = replyingTo ? { ...replyingTo } : null;
+          setReplyingTo(null);
+
+          const finalDuration = Math.max(1, recordingDuration);
+          const newMsg = {
+            clientMsgId,
+            sender: role,
+            text: 'Voice Note',
+            type: 'audio',
+            audioData: base64Audio,
+            audioDuration: finalDuration,
+            replyTo: currentReply,
+            seen: false,
+            seenAt: null,
+            listened: false,
+            listenedAt: null,
+            createdAt: new Date().toISOString(),
+          };
+
+          // Optimistic UI update
+          setMessages((prev) => [...prev, newMsg]);
+          scrollToBottom(true);
+
+          if (socket && socket.connected) {
+            socket.emit('send-message', newMsg);
+          } else {
+            fetch('/api/messages', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(newMsg),
+            }).catch((e) => console.error('Failed to send voice note:', e));
+          }
+        };
+        reader.readAsDataURL(audioBlob);
+      } catch (err) {
+        console.error('Error processing audio recording:', err);
+      } finally {
+        if (audioStreamRef.current) {
+          audioStreamRef.current.getTracks().forEach((track) => track.stop());
+          audioStreamRef.current = null;
+        }
+        setIsRecording(false);
+        setRecordingDuration(0);
+        audioChunksRef.current = [];
+      }
+    };
+
+    recorder.stop();
+  };
+
+  // Clean up audio recorder on unmount
+  useEffect(() => {
+    return () => {
+      cancelRecording();
+    };
+  }, []);
 
   // Cancel current reply
   const handleCancelReply = () => {
@@ -603,10 +977,11 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
                 )}
 
                 {/* Chat Bubble with Dynamic User Font Size */}
+                {/* Chat Bubble with Dynamic User Font Size or Voice Note Player */}
                 <div
                   className="chat-bubble-white50"
                   style={{
-                    padding: `${Math.round(fontSize * 0.58)}px ${Math.round(fontSize * 0.95)}px`,
+                    padding: msg.type === 'audio' ? '8px 12px' : `${Math.round(fontSize * 0.58)}px ${Math.round(fontSize * 0.95)}px`,
                     borderRadius: '12px',
                     borderBottomLeftRadius: '2px',
                     borderLeft: isMe ? '3px solid #818cf8' : '1px solid rgba(255, 255, 255, 0.6)',
@@ -617,7 +992,11 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
                     textAlign: 'left'
                   }}
                 >
-                  {msg.text}
+                  {msg.type === 'audio' ? (
+                    <VoiceMessagePlayer msg={msg} isMe={isMe} socket={socket} role={role} />
+                  ) : (
+                    msg.text
+                  )}
                 </div>
 
                 {/* Full Year, Date, Sent Time & Seen Time */}
@@ -757,100 +1136,213 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
           </div>
         )}
 
-        <form onSubmit={handleSendMessage} style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '8px',
-          width: '100%',
-          boxSizing: 'border-box'
-        }}>
-          {/* Quick Paste Button */}
-          <button
-            type="button"
-            onClick={async () => {
-              try {
-                if (navigator.clipboard && navigator.clipboard.readText) {
-                  const text = await navigator.clipboard.readText();
-                  if (text) {
-                    setInputText((prev) => prev + text);
-                    inputRef.current?.focus();
+        {isRecording ? (
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '10px',
+            width: '100%',
+            padding: '6px 12px',
+            background: 'rgba(239, 68, 68, 0.12)',
+            border: '1px solid rgba(239, 68, 68, 0.35)',
+            borderRadius: '14px',
+            boxSizing: 'border-box',
+            animation: 'fadeIn 0.2s ease-out'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <div style={{
+                width: '12px',
+                height: '12px',
+                borderRadius: '50%',
+                background: '#ef4444',
+                boxShadow: '0 0 10px #ef4444',
+                animation: 'pulseRed 1.2s infinite'
+              }} />
+              <span style={{
+                fontSize: '14px',
+                fontWeight: '700',
+                color: '#fca5a5',
+                fontFamily: 'monospace'
+              }}>
+                {Math.floor(recordingDuration / 60)}:{recordingDuration % 60 < 10 ? '0' : ''}{recordingDuration % 60}
+              </span>
+              <span style={{ fontSize: '12px', color: 'rgba(255, 255, 255, 0.65)' }}>
+                Recording voice note...
+              </span>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              {/* Cancel Button */}
+              <button
+                type="button"
+                onClick={cancelRecording}
+                style={{
+                  width: '38px',
+                  height: '38px',
+                  borderRadius: '10px',
+                  border: '1px solid rgba(255, 255, 255, 0.15)',
+                  background: 'rgba(255, 255, 255, 0.08)',
+                  color: '#f87171',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  touchAction: 'manipulation'
+                }}
+                title="Discard Recording"
+              >
+                <Trash2 size={16} />
+              </button>
+
+              {/* Send Audio Button */}
+              <button
+                type="button"
+                onClick={stopAndSendRecording}
+                style={{
+                  height: '38px',
+                  padding: '0 14px',
+                  borderRadius: '10px',
+                  border: 'none',
+                  background: 'linear-gradient(135deg, #10b981, #059669)',
+                  color: '#fff',
+                  fontWeight: '600',
+                  fontSize: '13px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  touchAction: 'manipulation',
+                  boxShadow: '0 2px 10px rgba(16, 185, 129, 0.4)'
+                }}
+                title="Send Voice Note"
+              >
+                <Send size={15} />
+                <span>Send</span>
+              </button>
+            </div>
+          </div>
+        ) : (
+          <form onSubmit={handleSendMessage} style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            width: '100%',
+            boxSizing: 'border-box'
+          }}>
+            {/* Quick Paste Button */}
+            <button
+              type="button"
+              onClick={async () => {
+                try {
+                  if (navigator.clipboard && navigator.clipboard.readText) {
+                    const text = await navigator.clipboard.readText();
+                    if (text) {
+                      setInputText((prev) => prev + text);
+                      inputRef.current?.focus();
+                    }
                   }
+                } catch (err) {
+                  console.log('Clipboard paste note:', err);
                 }
-              } catch (err) {
-                console.log('Clipboard paste note:', err);
-              }
-            }}
-            style={{
-              flexShrink: 0,
-              width: '42px',
-              height: '44px',
-              borderRadius: '12px',
-              border: '1px solid rgba(255, 255, 255, 0.12)',
-              background: 'rgba(255, 255, 255, 0.06)',
-              color: '#a5b4fc',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: 'pointer',
-              touchAction: 'manipulation',
-              boxSizing: 'border-box'
-            }}
-            title="Paste copied text"
-          >
-            <Clipboard size={17} />
-          </button>
+              }}
+              style={{
+                flexShrink: 0,
+                width: '42px',
+                height: '44px',
+                borderRadius: '12px',
+                border: '1px solid rgba(255, 255, 255, 0.12)',
+                background: 'rgba(255, 255, 255, 0.06)',
+                color: '#a5b4fc',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                touchAction: 'manipulation',
+                boxSizing: 'border-box'
+              }}
+              title="Paste copied text"
+            >
+              <Clipboard size={17} />
+            </button>
 
-          {/* Text Input */}
-          <input
-            ref={inputRef}
-            type="text"
-            placeholder="Type a message..."
-            value={inputText}
-            onChange={handleInputChange}
-            onFocus={handleInputFocus}
-            style={{
-              flex: 1,
-              minWidth: 0,
-              padding: '10px 14px',
-              borderRadius: '12px',
-              background: 'rgba(0, 0, 0, 0.4)',
-              border: '1px solid rgba(255, 255, 255, 0.15)',
-              color: '#fff',
-              fontSize: '16px',
-              outline: 'none',
-              height: '44px',
-              touchAction: 'manipulation',
-              boxSizing: 'border-box'
-            }}
-          />
+            {/* Mic Record Button */}
+            <button
+              type="button"
+              onClick={startRecording}
+              style={{
+                flexShrink: 0,
+                width: '42px',
+                height: '44px',
+                borderRadius: '12px',
+                border: '1px solid rgba(16, 185, 129, 0.35)',
+                background: 'rgba(16, 185, 129, 0.14)',
+                color: '#34d399',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                touchAction: 'manipulation',
+                boxSizing: 'border-box',
+                transition: 'all 0.2s'
+              }}
+              title="Record Voice Note (Auto-deletes 3 days after listening)"
+            >
+              <Mic size={18} />
+            </button>
 
-          {/* Send Button */}
-          <button
-            type="submit"
-            disabled={!inputText.trim()}
-            style={{
-              flexShrink: 0,
-              width: '46px',
-              height: '44px',
-              padding: 0,
-              borderRadius: '12px',
-              border: 'none',
-              background: inputText.trim() 
-                ? 'linear-gradient(135deg, #6366f1, #4f46e5)' 
-                : 'rgba(255, 255, 255, 0.1)',
-              color: inputText.trim() ? '#fff' : 'rgba(255, 255, 255, 0.3)',
-              cursor: inputText.trim() ? 'pointer' : 'not-allowed',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              touchAction: 'manipulation',
-              transition: 'all 0.2s',
-              boxSizing: 'border-box'
-            }}
-          >
-            <Send size={17} />
-          </button>
-        </form>
+            {/* Text Input */}
+            <input
+              ref={inputRef}
+              type="text"
+              placeholder="Type a message..."
+              value={inputText}
+              onChange={handleInputChange}
+              onFocus={handleInputFocus}
+              style={{
+                flex: 1,
+                minWidth: 0,
+                padding: '10px 14px',
+                borderRadius: '12px',
+                background: 'rgba(0, 0, 0, 0.4)',
+                border: '1px solid rgba(255, 255, 255, 0.15)',
+                color: '#fff',
+                fontSize: '16px',
+                outline: 'none',
+                height: '44px',
+                touchAction: 'manipulation',
+                boxSizing: 'border-box'
+              }}
+            />
+
+            {/* Send Button */}
+            <button
+              type="submit"
+              disabled={!inputText.trim()}
+              style={{
+                flexShrink: 0,
+                width: '46px',
+                height: '44px',
+                padding: 0,
+                borderRadius: '12px',
+                border: 'none',
+                background: inputText.trim() 
+                  ? 'linear-gradient(135deg, #6366f1, #4f46e5)' 
+                  : 'rgba(255, 255, 255, 0.1)',
+                color: inputText.trim() ? '#fff' : 'rgba(255, 255, 255, 0.3)',
+                cursor: inputText.trim() ? 'pointer' : 'not-allowed',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                touchAction: 'manipulation',
+                transition: 'all 0.2s',
+                boxSizing: 'border-box'
+              }}
+            >
+              <Send size={17} />
+            </button>
+          </form>
+        )}
       </div>
     </div>
   );

@@ -25,7 +25,8 @@ const io = new Server(server, {
 });
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '25mb' }));
+app.use(express.urlencoded({ limit: '25mb', extended: true }));
 
 const PORT = process.env.PORT || 5000;
 const DEFAULT_PASSWORD = process.env.CHAT_PASSWORD || process.env.PASSWORD || process.env.LOGIN_PASSWORD || 'secret123';
@@ -121,9 +122,12 @@ async function initDatabase() {
         console.log(`🔑 Security password updated from environment variable: "${DEFAULT_PASSWORD}"`);
       }
     }
+    // Clean any expired audio messages upon start
+    cleanupExpiredAudio();
   } catch (err) {
     console.log('⚠️ MongoDB server not active. Operating with Persistent File + High-Speed In-Memory Database.');
     isMongoConnected = false;
+    cleanupExpiredAudio();
   }
 }
 
@@ -324,9 +328,10 @@ app.get('/api/messages', async (req, res) => {
 // Send message via HTTP REST (Backup for WebSockets)
 app.post('/api/messages', async (req, res) => {
   try {
-    const { sender, text, clientMsgId, replyTo } = req.body;
-    if (!text || !text.trim()) {
-      return res.status(400).json({ error: 'Message text is required' });
+    const { sender, text, type, audioData, audioDuration, clientMsgId, replyTo } = req.body;
+    const isAudio = type === 'audio' && Boolean(audioData);
+    if (!isAudio && (!text || !text.trim())) {
+      return res.status(400).json({ error: 'Message content is required' });
     }
 
     // Deduplicate if already processed
@@ -342,8 +347,12 @@ app.post('/api/messages', async (req, res) => {
 
     const msgObj = {
       sender: (sender === 'BOT2' ? 'BOT2' : 'BOT1'),
-      text: text.trim(),
-      type: 'text',
+      text: isAudio ? (text || 'Voice Note') : text.trim(),
+      type: isAudio ? 'audio' : 'text',
+      audioData: isAudio ? audioData : null,
+      audioDuration: isAudio ? Number(audioDuration || 0) : 0,
+      listened: false,
+      listenedAt: null,
       seen: false,
       seenAt: null,
       replyTo: replyTo || null,
@@ -373,6 +382,93 @@ app.post('/api/messages', async (req, res) => {
   }
 });
 
+// Mark Audio Message as Listened
+app.post('/api/messages/mark-audio-listened', async (req, res) => {
+  try {
+    const { msgId, clientMsgId } = req.body;
+    const now = new Date();
+    let updated = false;
+
+    if (isMongoConnected) {
+      const query = msgId ? { _id: msgId } : { clientMsgId };
+      const doc = await Message.findOne(query);
+      if (doc && !doc.listened) {
+        doc.listened = true;
+        doc.listenedAt = now;
+        await doc.save();
+        updated = true;
+      }
+    } else {
+      const msg = inMemoryStore.messages.find(
+        (m) => (msgId && (m._id === msgId || String(m._id) === String(msgId))) || (clientMsgId && m.clientMsgId === clientMsgId)
+      );
+      if (msg && !msg.listened) {
+        msg.listened = true;
+        msg.listenedAt = now;
+        saveMessagesToDisk();
+        updated = true;
+      }
+    }
+
+    if (updated) {
+      io.emit('audio-listened-update', { msgId, clientMsgId, listenedAt: now });
+    }
+    res.json({ success: true, listenedAt: now });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Auto-cleanup expired audio messages (3 days after being listened to)
+const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
+
+async function cleanupExpiredAudio() {
+  try {
+    const expiryThreshold = new Date(Date.now() - THREE_DAYS_MS);
+    let deletedIds = [];
+
+    if (isMongoConnected) {
+      const expiredDocs = await Message.find({
+        type: 'audio',
+        listened: true,
+        listenedAt: { $lte: expiryThreshold },
+      });
+
+      if (expiredDocs.length > 0) {
+        const ids = expiredDocs.map((d) => d._id);
+        const clientIds = expiredDocs.map((d) => d.clientMsgId).filter(Boolean);
+        await Message.deleteMany({ _id: { $in: ids } });
+        deletedIds = [...ids.map(String), ...clientIds];
+        console.log(`🧹 Auto-cleaned ${expiredDocs.length} audio message(s) older than 3 days after listening.`);
+      }
+    } else {
+      const expired = inMemoryStore.messages.filter((m) => {
+        if (m.type === 'audio' && m.listened && m.listenedAt) {
+          const listenedTime = new Date(m.listenedAt).getTime();
+          return Date.now() - listenedTime >= THREE_DAYS_MS;
+        }
+        return false;
+      });
+
+      if (expired.length > 0) {
+        deletedIds = expired.map((m) => String(m._id || m.clientMsgId)).filter(Boolean);
+        inMemoryStore.messages = inMemoryStore.messages.filter((m) => !expired.includes(m));
+        saveMessagesToDisk();
+        console.log(`🧹 Auto-cleaned ${expired.length} audio message(s) from disk store.`);
+      }
+    }
+
+    if (deletedIds.length > 0) {
+      io.emit('messages-deleted', { deletedIds, reason: 'audio_expired_3_days' });
+    }
+  } catch (err) {
+    console.error('Error during expired audio cleanup:', err);
+  }
+}
+
+// Run audio expiration cleaner every 15 minutes
+setInterval(cleanupExpiredAudio, 15 * 60 * 1000);
+
 // Online Users Tracking
 const activeUsers = {
   BOT1: false,
@@ -394,8 +490,9 @@ io.on('connection', (socket) => {
 
   socket.on('send-message', async (data) => {
     try {
-      const { sender, text, clientMsgId, replyTo } = data;
-      if (!text || !text.trim()) return;
+      const { sender, text, type, audioData, audioDuration, clientMsgId, replyTo } = data;
+      const isAudio = type === 'audio' && Boolean(audioData);
+      if (!isAudio && (!text || !text.trim())) return;
 
       // Deduplicate if already saved
       if (clientMsgId) {
@@ -410,8 +507,12 @@ io.on('connection', (socket) => {
 
       const msgObj = {
         sender,
-        text: text.trim(),
-        type: 'text',
+        text: isAudio ? (text || 'Voice Note') : text.trim(),
+        type: isAudio ? 'audio' : 'text',
+        audioData: isAudio ? audioData : null,
+        audioDuration: isAudio ? Number(audioDuration || 0) : 0,
+        listened: false,
+        listenedAt: null,
         seen: false,
         seenAt: null,
         replyTo: replyTo || null,
@@ -436,6 +537,40 @@ io.on('connection', (socket) => {
       io.emit('receive-message', savedMsg);
     } catch (err) {
       console.error('Failed to save message:', err);
+    }
+  });
+
+  socket.on('mark-audio-listened', async ({ msgId, clientMsgId, readerRole }) => {
+    try {
+      const now = new Date();
+      let updated = false;
+
+      if (isMongoConnected) {
+        const query = msgId ? { _id: msgId } : { clientMsgId };
+        const doc = await Message.findOne(query);
+        if (doc && !doc.listened) {
+          doc.listened = true;
+          doc.listenedAt = now;
+          await doc.save();
+          updated = true;
+        }
+      } else {
+        const msg = inMemoryStore.messages.find(
+          (m) => (msgId && (m._id === msgId || String(m._id) === String(msgId))) || (clientMsgId && m.clientMsgId === clientMsgId)
+        );
+        if (msg && !msg.listened) {
+          msg.listened = true;
+          msg.listenedAt = now;
+          saveMessagesToDisk();
+          updated = true;
+        }
+      }
+
+      if (updated) {
+        io.emit('audio-listened-update', { msgId, clientMsgId, listenedAt: now });
+      }
+    } catch (err) {
+      console.error('Error handling mark-audio-listened socket event:', err);
     }
   });
 
