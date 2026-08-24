@@ -645,8 +645,8 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
                   </span>
                   {isMe && (
                     <span style={{
-                      color: msg.seen ? '#818cf8' : 'rgba(255, 255, 255, 0.35)',
-                      fontWeight: msg.seen ? '600' : '400',
+                      color: msg.seen ? '#818cf8' : '#f87171',
+                      fontWeight: '600',
                       fontSize: '11.5px'
                     }}>
                       {msg.seen
@@ -658,7 +658,7 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
                             const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
                             return `• Seen ${yyyy}-${mm}-${dd} ${time}`;
                           })()
-                        : '• Sent'}
+                        : '• New'}
                     </span>
                   )}
                   
