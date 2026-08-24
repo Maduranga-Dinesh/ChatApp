@@ -126,7 +126,7 @@ export default function PasswordGate({ onLoginSuccess, onDatabaseWiped, statusIn
           <div style={{ position: 'relative', marginBottom: errorMsg ? '12px' : '18px' }}>
             <input
               type={showPassword ? 'text' : 'password'}
-              placeholder="Password"
+              placeholder="Code"
               value={password}
               onChange={(e) => {
                 setPassword(e.target.value);
