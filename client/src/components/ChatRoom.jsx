@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, Lock, LogOut, Sparkles, ShieldAlert, Circle, Reply, X, CornerDownRight, Clipboard, Mic, Play, Pause, Trash2, Clock } from 'lucide-react';
+import { Send, Lock, LogOut, Sparkles, ShieldAlert, Circle, Reply, X, CornerDownRight, Clipboard, Mic, Play, Pause, Trash2, Clock, Square } from 'lucide-react';
 
 // Custom Interactive Audio Player Component
 function VoiceMessagePlayer({ msg, isMe, socket, role }) {
@@ -207,6 +207,12 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
   const audioChunksRef = useRef([]);
   const recordingTimerRef = useRef(null);
   const audioStreamRef = useRef(null);
+
+  // Audio Preview States
+  const [previewAudio, setPreviewAudio] = useState(null); // { audioUrl, base64Audio, duration }
+  const [isPreviewPlaying, setIsPreviewPlaying] = useState(false);
+  const [previewCurrentTime, setPreviewCurrentTime] = useState(0);
+  const previewAudioRef = useRef(null);
 
   // Persistent Dynamic Font Size (Default 15.5px, ranges 11px to 24px)
   const [fontSize, setFontSize] = useState(() => {
@@ -542,6 +548,120 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
     audioChunksRef.current = [];
   };
 
+  // Stop recording and switch to Preview Player
+  const stopToPreview = () => {
+    if (recordingTimerRef.current) {
+      clearInterval(recordingTimerRef.current);
+      recordingTimerRef.current = null;
+    }
+
+    const recorder = mediaRecorderRef.current;
+    if (!recorder || recorder.state === 'inactive') {
+      cancelRecording();
+      return;
+    }
+
+    const finalDuration = Math.max(1, recordingDuration);
+
+    recorder.onstop = async () => {
+      try {
+        const mimeType = recorder.mimeType || 'audio/webm';
+        const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
+        if (audioBlob.size < 100) {
+          cancelRecording();
+          return;
+        }
+
+        const audioUrl = URL.createObjectURL(audioBlob);
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          setPreviewAudio({
+            audioUrl,
+            base64Audio: reader.result,
+            duration: finalDuration,
+          });
+          setIsPreviewPlaying(false);
+          setPreviewCurrentTime(0);
+        };
+        reader.readAsDataURL(audioBlob);
+      } catch (err) {
+        console.error('Error creating preview audio:', err);
+      } finally {
+        if (audioStreamRef.current) {
+          audioStreamRef.current.getTracks().forEach((track) => track.stop());
+          audioStreamRef.current = null;
+        }
+        setIsRecording(false);
+        audioChunksRef.current = [];
+      }
+    };
+
+    recorder.stop();
+  };
+
+  const cancelPreview = () => {
+    if (previewAudio?.audioUrl) {
+      URL.revokeObjectURL(previewAudio.audioUrl);
+    }
+    setPreviewAudio(null);
+    setIsPreviewPlaying(false);
+    setPreviewCurrentTime(0);
+    setRecordingDuration(0);
+  };
+
+  const sendPreviewAudio = () => {
+    if (!previewAudio) return;
+
+    const clientMsgId = 'msg_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
+    const currentReply = replyingTo ? { ...replyingTo } : null;
+    setReplyingTo(null);
+
+    const newMsg = {
+      clientMsgId,
+      sender: role,
+      text: 'Voice Note',
+      type: 'audio',
+      audioData: previewAudio.base64Audio,
+      audioDuration: previewAudio.duration,
+      replyTo: currentReply,
+      seen: false,
+      seenAt: null,
+      listened: false,
+      listenedAt: null,
+      createdAt: new Date().toISOString(),
+    };
+
+    // Optimistic UI update
+    setMessages((prev) => [...prev, newMsg]);
+    scrollToBottom(true);
+
+    if (socket && socket.connected) {
+      socket.emit('send-message', newMsg);
+    } else {
+      fetch('/api/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newMsg),
+      }).catch((e) => console.error('Failed to send voice note:', e));
+    }
+
+    cancelPreview();
+  };
+
+  const togglePreviewPlay = () => {
+    const audio = previewAudioRef.current;
+    if (!audio) return;
+
+    if (isPreviewPlaying) {
+      audio.pause();
+      setIsPreviewPlaying(false);
+    } else {
+      audio.play().then(() => {
+        setIsPreviewPlaying(true);
+      }).catch((err) => console.error('Preview playback failed:', err));
+    }
+  };
+
   const stopAndSendRecording = () => {
     if (recordingTimerRef.current) {
       clearInterval(recordingTimerRef.current);
@@ -617,10 +737,11 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
     recorder.stop();
   };
 
-  // Clean up audio recorder on unmount
+  // Clean up audio recorder & preview on unmount
   useEffect(() => {
     return () => {
       cancelRecording();
+      cancelPreview();
     };
   }, []);
 
@@ -1136,12 +1257,152 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
           </div>
         )}
 
-        {isRecording ? (
+        {previewAudio ? (
           <div style={{
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            gap: '10px',
+            gap: '8px',
+            width: '100%',
+            padding: '6px 10px',
+            background: 'rgba(99, 102, 241, 0.12)',
+            border: '1px solid rgba(99, 102, 241, 0.35)',
+            borderRadius: '14px',
+            boxSizing: 'border-box',
+            animation: 'fadeIn 0.2s ease-out'
+          }}>
+            <audio
+              ref={previewAudioRef}
+              src={previewAudio.audioUrl}
+              onTimeUpdate={() => {
+                if (previewAudioRef.current) {
+                  setPreviewCurrentTime(previewAudioRef.current.currentTime);
+                }
+              }}
+              onEnded={() => {
+                setIsPreviewPlaying(false);
+                setPreviewCurrentTime(0);
+              }}
+            />
+
+            {/* Discard / Trash button */}
+            <button
+              type="button"
+              onClick={cancelPreview}
+              style={{
+                width: '38px',
+                height: '38px',
+                borderRadius: '10px',
+                border: '1px solid rgba(239, 68, 68, 0.3)',
+                background: 'rgba(239, 68, 68, 0.12)',
+                color: '#f87171',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                touchAction: 'manipulation',
+                flexShrink: 0
+              }}
+              title="Discard Voice Note"
+            >
+              <Trash2 size={16} />
+            </button>
+
+            {/* Play/Pause Preview button */}
+            <button
+              type="button"
+              onClick={togglePreviewPlay}
+              style={{
+                width: '38px',
+                height: '38px',
+                borderRadius: '50%',
+                border: 'none',
+                background: isPreviewPlaying ? '#10b981' : '#6366f1',
+                color: '#fff',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                touchAction: 'manipulation',
+                flexShrink: 0,
+                boxShadow: '0 2px 8px rgba(0,0,0,0.3)'
+              }}
+              title={isPreviewPlaying ? 'Pause Preview' : 'Play Preview'}
+            >
+              {isPreviewPlaying ? <Pause size={16} /> : <Play size={16} style={{ marginLeft: '2px' }} />}
+            </button>
+
+            {/* Scrubber & Duration */}
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '2px', minWidth: 0 }}>
+              <input
+                type="range"
+                min="0"
+                max={previewAudio.duration || 1}
+                step="0.1"
+                value={previewCurrentTime}
+                onChange={(e) => {
+                  const val = parseFloat(e.target.value);
+                  if (previewAudioRef.current) {
+                    previewAudioRef.current.currentTime = val;
+                    setPreviewCurrentTime(val);
+                  }
+                }}
+                style={{
+                  width: '100%',
+                  accentColor: '#818cf8',
+                  cursor: 'pointer',
+                  height: '4px'
+                }}
+              />
+              <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                fontSize: '10px',
+                color: 'rgba(255, 255, 255, 0.75)',
+                fontFamily: 'monospace'
+              }}>
+                <span>
+                  {Math.floor(previewCurrentTime / 60)}:{Math.floor(previewCurrentTime % 60) < 10 ? '0' : ''}{Math.floor(previewCurrentTime % 60)}
+                </span>
+                <span style={{ color: '#a5b4fc', fontWeight: '600' }}>
+                  Preview ({Math.floor(previewAudio.duration / 60)}:{Math.floor(previewAudio.duration % 60) < 10 ? '0' : ''}{Math.floor(previewAudio.duration % 60)})
+                </span>
+              </div>
+            </div>
+
+            {/* Send Button */}
+            <button
+              type="button"
+              onClick={sendPreviewAudio}
+              style={{
+                height: '38px',
+                padding: '0 14px',
+                borderRadius: '10px',
+                border: 'none',
+                background: 'linear-gradient(135deg, #10b981, #059669)',
+                color: '#fff',
+                fontWeight: '600',
+                fontSize: '13px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                touchAction: 'manipulation',
+                flexShrink: 0,
+                boxShadow: '0 2px 10px rgba(16, 185, 129, 0.4)'
+              }}
+              title="Send Voice Note"
+            >
+              <Send size={15} />
+              <span>Send</span>
+            </button>
+          </div>
+        ) : isRecording ? (
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '8px',
             width: '100%',
             padding: '6px 12px',
             background: 'rgba(239, 68, 68, 0.12)',
@@ -1150,36 +1411,38 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
             boxSizing: 'border-box',
             animation: 'fadeIn 0.2s ease-out'
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1 }}>
               <div style={{
-                width: '12px',
-                height: '12px',
+                width: '10px',
+                height: '10px',
                 borderRadius: '50%',
                 background: '#ef4444',
                 boxShadow: '0 0 10px #ef4444',
-                animation: 'pulseRed 1.2s infinite'
+                animation: 'pulseRed 1.2s infinite',
+                flexShrink: 0
               }} />
               <span style={{
-                fontSize: '14px',
+                fontSize: '13.5px',
                 fontWeight: '700',
                 color: '#fca5a5',
-                fontFamily: 'monospace'
+                fontFamily: 'monospace',
+                flexShrink: 0
               }}>
                 {Math.floor(recordingDuration / 60)}:{recordingDuration % 60 < 10 ? '0' : ''}{recordingDuration % 60}
               </span>
-              <span style={{ fontSize: '12px', color: 'rgba(255, 255, 255, 0.65)' }}>
-                Recording voice note...
+              <span style={{ fontSize: '11px', color: 'rgba(255, 255, 255, 0.6)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                Recording...
               </span>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              {/* Cancel Button */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+              {/* Discard Button */}
               <button
                 type="button"
                 onClick={cancelRecording}
                 style={{
-                  width: '38px',
-                  height: '38px',
+                  width: '36px',
+                  height: '36px',
                   borderRadius: '10px',
                   border: '1px solid rgba(255, 255, 255, 0.15)',
                   background: 'rgba(255, 255, 255, 0.08)',
@@ -1195,29 +1458,54 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
                 <Trash2 size={16} />
               </button>
 
-              {/* Send Audio Button */}
+              {/* Stop & Listen (Preview) Button */}
+              <button
+                type="button"
+                onClick={stopToPreview}
+                style={{
+                  height: '36px',
+                  padding: '0 10px',
+                  borderRadius: '10px',
+                  border: '1px solid rgba(99, 102, 241, 0.4)',
+                  background: 'rgba(99, 102, 241, 0.25)',
+                  color: '#a5b4fc',
+                  fontWeight: '600',
+                  fontSize: '12px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  touchAction: 'manipulation'
+                }}
+                title="Stop recording and preview audio"
+              >
+                <Square size={13} fill="#a5b4fc" />
+                <span>Preview</span>
+              </button>
+
+              {/* Instant Send Button */}
               <button
                 type="button"
                 onClick={stopAndSendRecording}
                 style={{
-                  height: '38px',
-                  padding: '0 14px',
+                  height: '36px',
+                  padding: '0 12px',
                   borderRadius: '10px',
                   border: 'none',
                   background: 'linear-gradient(135deg, #10b981, #059669)',
                   color: '#fff',
                   fontWeight: '600',
-                  fontSize: '13px',
+                  fontSize: '12px',
                   cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '6px',
+                  gap: '4px',
                   touchAction: 'manipulation',
-                  boxShadow: '0 2px 10px rgba(16, 185, 129, 0.4)'
+                  boxShadow: '0 2px 8px rgba(16, 185, 129, 0.4)'
                 }}
-                title="Send Voice Note"
+                title="Send Voice Note Directly"
               >
-                <Send size={15} />
+                <Send size={14} />
                 <span>Send</span>
               </button>
             </div>
