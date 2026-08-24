@@ -665,23 +665,11 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
                   {/* Reply Button */}
                   <button
                     type="button"
+                    className="reply-btn-green"
                     onClick={() => handleStartReply(msg)}
-                    style={{
-                      background: 'transparent',
-                      border: 'none',
-                      color: 'rgba(255, 255, 255, 0.45)',
-                      cursor: 'pointer',
-                      padding: '1px 4px',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '3px',
-                      fontSize: '11.5px',
-                      borderRadius: '4px',
-                      touchAction: 'manipulation'
-                    }}
                     title="Reply to this message"
                   >
-                    <Reply size={12} />
+                    <Reply size={11} strokeWidth={2.2} />
                     <span>Reply</span>
                   </button>
                 </div>
