@@ -194,7 +194,13 @@ function VoiceMessagePlayer({ msg, isMe, socket, role }) {
 
 export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped }) {
   const [messages, setMessages] = useState([]);
-  const [inputText, setInputText] = useState('');
+  const [inputText, setInputText] = useState(() => {
+    try {
+      return localStorage.getItem('chat_draft_text') || '';
+    } catch (e) {
+      return '';
+    }
+  });
   const [onlineUsers, setOnlineUsers] = useState({ BOT1: false, BOT2: false });
   const [isTypingOther, setIsTypingOther] = useState(false);
   const [screenShield, setScreenShield] = useState(false);
@@ -398,6 +404,10 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
 
     socket.on('database-wiped', (data) => {
       setMessages([]);
+      setInputText('');
+      try {
+        localStorage.removeItem('chat_draft_text');
+      } catch (err) {}
       if (data.systemMsg) {
         setMessages([data.systemMsg]);
       }
@@ -782,7 +792,12 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
   // Cancel current edit
   const handleCancelEdit = () => {
     setEditingMessage(null);
-    setInputText('');
+    try {
+      const draft = localStorage.getItem('chat_draft_text') || '';
+      setInputText(draft);
+    } catch (err) {
+      setInputText('');
+    }
   };
 
   // Request message deletion (opens confirmation modal)
@@ -916,6 +931,9 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
     // 1. Instantly display in sender UI and scroll to bottom
     setMessages((prev) => [...prev, optimisticMsg]);
     setInputText('');
+    try {
+      localStorage.removeItem('chat_draft_text');
+    } catch (err) {}
     scrollToBottom(true);
 
     // Clear typing status
@@ -956,9 +974,17 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
     }
   };
 
-  // Handle typing indicator
+  // Handle typing indicator and draft auto-save
   const handleInputChange = (e) => {
-    setInputText(e.target.value);
+    const val = e.target.value;
+    setInputText(val);
+
+    if (!editingMessage) {
+      try {
+        localStorage.setItem('chat_draft_text', val);
+      } catch (err) {}
+    }
+
     if (!socket) return;
 
     socket.emit('typing', { sender: role, isTyping: true });
@@ -968,6 +994,24 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
       socket.emit('typing', { sender: role, isTyping: false });
     }, 2000);
   };
+
+  // Handle Enter key (Ctrl+Enter / Cmd+Enter sends on desktop, plain Enter adds newline)
+  const handleKeyDown = (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+      e.preventDefault();
+      handleSendMessage(e);
+    }
+  };
+
+  // Auto-adjust textarea height dynamically
+  useEffect(() => {
+    const textarea = inputRef.current;
+    if (textarea) {
+      textarea.style.height = 'auto';
+      const scrollH = textarea.scrollHeight;
+      textarea.style.height = `${Math.min(Math.max(scrollH, 44), 130)}px`;
+    }
+  }, [inputText]);
 
   // Smooth scroll to bottom on input focus (Keyboard appearance)
   const handleInputFocus = () => {
@@ -1791,27 +1835,32 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
               <Mic size={18} />
             </button>
 
-            {/* Text Input */}
-            <input
+            {/* Multi-line Textarea Input */}
+            <textarea
               ref={inputRef}
-              type="text"
+              rows={1}
               placeholder={editingMessage ? "Edit message..." : "Type a message..."}
               value={inputText}
               onChange={handleInputChange}
+              onKeyDown={handleKeyDown}
               onFocus={handleInputFocus}
               style={{
                 flex: 1,
                 minWidth: 0,
-                padding: '10px 14px',
+                padding: '11px 14px',
                 borderRadius: '12px',
                 background: 'rgba(0, 0, 0, 0.4)',
                 border: editingMessage ? '1px solid #818cf8' : '1px solid rgba(255, 255, 255, 0.15)',
                 color: '#fff',
                 fontSize: '16px',
                 outline: 'none',
-                height: '44px',
+                minHeight: '44px',
+                maxHeight: '130px',
+                resize: 'none',
+                lineHeight: '1.4',
                 touchAction: 'manipulation',
-                boxSizing: 'border-box'
+                boxSizing: 'border-box',
+                fontFamily: 'inherit'
               }}
             />
 
