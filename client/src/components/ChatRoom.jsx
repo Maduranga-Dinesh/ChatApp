@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, Lock, LogOut, Sparkles, ShieldAlert, Circle, Reply, X, CornerDownRight, Clipboard, Mic, Play, Pause, Trash2, Clock, Square } from 'lucide-react';
+import { Send, Lock, LogOut, Sparkles, ShieldAlert, Circle, Reply, X, CornerDownRight, Clipboard, Mic, Play, Pause, Trash2, Clock, Square, Pencil, Check } from 'lucide-react';
 
 // Custom Interactive Audio Player Component
 function VoiceMessagePlayer({ msg, isMe, socket, role }) {
@@ -199,6 +199,8 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
   const [isTypingOther, setIsTypingOther] = useState(false);
   const [screenShield, setScreenShield] = useState(false);
   const [replyingTo, setReplyingTo] = useState(null); // { msgId, sender, text }
+  const [editingMessage, setEditingMessage] = useState(null); // { msgId, clientMsgId, text }
+  const [deleteConfirmMsg, setDeleteConfirmMsg] = useState(null); // { _id, clientMsgId, text, type }
 
   // Audio Recording States
   const [isRecording, setIsRecording] = useState(false);
@@ -368,6 +370,20 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
       );
     });
 
+    socket.on('message-edited', ({ msgId, clientMsgId, text, isEdited, editedAt }) => {
+      setMessages((prev) =>
+        prev.map((msg) => {
+          if (
+            (msgId && (msg._id === msgId || String(msg._id) === String(msgId))) ||
+            (clientMsgId && msg.clientMsgId === clientMsgId)
+          ) {
+            return { ...msg, text, isEdited: true, editedAt: editedAt || new Date() };
+          }
+          return msg;
+        })
+      );
+    });
+
     socket.on('messages-deleted', ({ deletedIds }) => {
       if (Array.isArray(deletedIds) && deletedIds.length > 0) {
         setMessages((prev) =>
@@ -394,6 +410,7 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
       socket.off('receive-message');
       socket.off('messages-seen-update');
       socket.off('audio-listened-update');
+      socket.off('message-edited');
       socket.off('messages-deleted');
       socket.off('online-status');
       socket.off('user-typing');
@@ -750,6 +767,68 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
     setReplyingTo(null);
   };
 
+  // Start editing message
+  const handleStartEdit = (msg) => {
+    setReplyingTo(null);
+    setEditingMessage({
+      msgId: msg._id,
+      clientMsgId: msg.clientMsgId,
+      text: msg.text || '',
+    });
+    setInputText(msg.text || '');
+    inputRef.current?.focus();
+  };
+
+  // Cancel current edit
+  const handleCancelEdit = () => {
+    setEditingMessage(null);
+    setInputText('');
+  };
+
+  // Request message deletion (opens confirmation modal)
+  const handleRequestDelete = (msg) => {
+    setDeleteConfirmMsg(msg);
+  };
+
+  // Execute message deletion
+  const handleExecuteDelete = async () => {
+    if (!deleteConfirmMsg) return;
+    const targetId = deleteConfirmMsg._id;
+    const targetClientId = deleteConfirmMsg.clientMsgId;
+
+    // Optimistic delete
+    setMessages((prev) =>
+      prev.filter((m) =>
+        !(targetId && (m._id === targetId || String(m._id) === String(targetId))) &&
+        !(targetClientId && m.clientMsgId === targetClientId)
+      )
+    );
+
+    if (socket && socket.connected) {
+      socket.emit('delete-message', {
+        msgId: targetId,
+        clientMsgId: targetClientId,
+        sender: role,
+      });
+    } else {
+      try {
+        await fetch('/api/messages/delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            msgId: targetId,
+            clientMsgId: targetClientId,
+            sender: role,
+          }),
+        });
+      } catch (err) {
+        console.error('Delete message API error:', err);
+      }
+    }
+
+    setDeleteConfirmMsg(null);
+  };
+
   // Scroll to referenced message when clicking quote
   const scrollToMessage = (targetId) => {
     if (!targetId) return;
@@ -761,11 +840,63 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
     }
   };
 
-  // Handle message sending with Optimistic UI & Dual Delivery
+  // Handle message sending & editing with Optimistic UI & Dual Delivery
   const handleSendMessage = async (e) => {
     if (e) e.preventDefault();
     const textToSend = inputText.trim();
     if (!textToSend) return;
+
+    // If we are editing an existing message
+    if (editingMessage) {
+      const targetId = editingMessage.msgId;
+      const targetClientId = editingMessage.clientMsgId;
+      const now = new Date().toISOString();
+
+      // Optimistic UI update
+      setMessages((prev) =>
+        prev.map((m) => {
+          if (
+            (targetId && (m._id === targetId || String(m._id) === String(targetId))) ||
+            (targetClientId && m.clientMsgId === targetClientId)
+          ) {
+            return { ...m, text: textToSend, isEdited: true, editedAt: now };
+          }
+          return m;
+        })
+      );
+
+      setInputText('');
+      setEditingMessage(null);
+
+      if (socket) {
+        socket.emit('typing', { sender: role, isTyping: false });
+      }
+
+      if (socket && socket.connected) {
+        socket.emit('edit-message', {
+          msgId: targetId,
+          clientMsgId: targetClientId,
+          newText: textToSend,
+          sender: role,
+        });
+      } else {
+        try {
+          await fetch('/api/messages/edit', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              msgId: targetId,
+              clientMsgId: targetClientId,
+              newText: textToSend,
+              sender: role,
+            }),
+          });
+        } catch (err) {
+          console.error('Edit message API error:', err);
+        }
+      }
+      return;
+    }
 
     const currentReply = replyingTo ? { ...replyingTo } : null;
     setReplyingTo(null);
@@ -1143,6 +1274,17 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
                       return `${yyyy}-${mm}-${dd} ${time}`;
                     })()}
                   </span>
+                  {/* Edited indicator */}
+                  {msg.isEdited && (
+                    <span style={{
+                      color: 'rgba(255, 255, 255, 0.45)',
+                      fontStyle: 'italic',
+                      fontSize: '11px'
+                    }}>
+                      (edited)
+                    </span>
+                  )}
+
                   {isMe && (
                     <span style={{
                       color: msg.seen ? '#818cf8' : '#f87171',
@@ -1172,6 +1314,32 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
                     <Reply size={11} strokeWidth={2.2} />
                     <span>Reply</span>
                   </button>
+
+                  {/* Edit Button (For own text messages) */}
+                  {isMe && msg.type !== 'audio' && (
+                    <button
+                      type="button"
+                      className="edit-btn-blue"
+                      onClick={() => handleStartEdit(msg)}
+                      title="Edit this message"
+                    >
+                      <Pencil size={11} strokeWidth={2.2} />
+                      <span>Edit</span>
+                    </button>
+                  )}
+
+                  {/* Delete Button (For own messages) */}
+                  {isMe && (
+                    <button
+                      type="button"
+                      className="delete-btn-red"
+                      onClick={() => handleRequestDelete(msg)}
+                      title="Delete this message"
+                    >
+                      <Trash2 size={11} strokeWidth={2.2} />
+                      <span>Delete</span>
+                    </button>
+                  )}
                 </div>
               </div>
             );
@@ -1251,6 +1419,50 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
                 touchAction: 'manipulation'
               }}
               title="Cancel Reply"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        )}
+
+        {/* Active Edit Banner */}
+        {editingMessage && (
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '6px 12px',
+            background: 'rgba(30, 27, 75, 0.95)',
+            borderLeft: '3px solid #818cf8',
+            borderRadius: '8px',
+            marginBottom: '8px',
+            gap: '8px'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflow: 'hidden', flex: 1 }}>
+              <Pencil size={13} color="#818cf8" style={{ flexShrink: 0 }} />
+              <div style={{ overflow: 'hidden', fontSize: '11px', lineHeight: '1.3' }}>
+                <span style={{ fontWeight: '700', color: '#a5b4fc', marginRight: '6px' }}>
+                  Editing message:
+                </span>
+                <span style={{ color: 'rgba(255, 255, 255, 0.65)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {editingMessage.text}
+                </span>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={handleCancelEdit}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: 'rgba(255, 255, 255, 0.5)',
+                cursor: 'pointer',
+                padding: '4px',
+                display: 'flex',
+                alignItems: 'center',
+                touchAction: 'manipulation'
+              }}
+              title="Cancel Edit"
             >
               <X size={14} />
             </button>
@@ -1583,7 +1795,7 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
             <input
               ref={inputRef}
               type="text"
-              placeholder="Type a message..."
+              placeholder={editingMessage ? "Edit message..." : "Type a message..."}
               value={inputText}
               onChange={handleInputChange}
               onFocus={handleInputFocus}
@@ -1593,7 +1805,7 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
                 padding: '10px 14px',
                 borderRadius: '12px',
                 background: 'rgba(0, 0, 0, 0.4)',
-                border: '1px solid rgba(255, 255, 255, 0.15)',
+                border: editingMessage ? '1px solid #818cf8' : '1px solid rgba(255, 255, 255, 0.15)',
                 color: '#fff',
                 fontSize: '16px',
                 outline: 'none',
@@ -1603,7 +1815,7 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
               }}
             />
 
-            {/* Send Button */}
+            {/* Send / Save Button */}
             <button
               type="submit"
               disabled={!inputText.trim()}
@@ -1615,7 +1827,7 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
                 borderRadius: '12px',
                 border: 'none',
                 background: inputText.trim() 
-                  ? 'linear-gradient(135deg, #6366f1, #4f46e5)' 
+                  ? (editingMessage ? 'linear-gradient(135deg, #10b981, #059669)' : 'linear-gradient(135deg, #6366f1, #4f46e5)')
                   : 'rgba(255, 255, 255, 0.1)',
                 color: inputText.trim() ? '#fff' : 'rgba(255, 255, 255, 0.3)',
                 cursor: inputText.trim() ? 'pointer' : 'not-allowed',
@@ -1624,14 +1836,111 @@ export default function ChatRoom({ role, userPassword, socket, onLogout, onWiped
                 justifyContent: 'center',
                 touchAction: 'manipulation',
                 transition: 'all 0.2s',
-                boxSizing: 'border-box'
+                boxSizing: 'border-box',
+                boxShadow: inputText.trim() ? (editingMessage ? '0 2px 10px rgba(16, 185, 129, 0.4)' : '0 2px 10px rgba(99, 102, 241, 0.4)') : 'none'
               }}
+              title={editingMessage ? "Save Edit" : "Send Message"}
             >
-              <Send size={17} />
+              {editingMessage ? <Check size={18} /> : <Send size={17} />}
             </button>
           </form>
         )}
       </div>
+
+      {/* Delete Confirmation Modal */}
+      {deleteConfirmMsg && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(0, 0, 0, 0.75)',
+          backdropFilter: 'blur(8px)',
+          WebkitBackdropFilter: 'blur(8px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '16px',
+          zIndex: 99999,
+          animation: 'fadeIn 0.15s ease-out'
+        }}>
+          <div style={{
+            background: 'rgba(22, 22, 32, 0.98)',
+            border: '1px solid rgba(239, 68, 68, 0.35)',
+            borderRadius: '16px',
+            padding: '20px',
+            maxWidth: '360px',
+            width: '100%',
+            boxShadow: '0 10px 30px rgba(0,0,0,0.5)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '14px',
+            textAlign: 'center'
+          }}>
+            <div style={{
+              width: '44px',
+              height: '44px',
+              borderRadius: '50%',
+              background: 'rgba(239, 68, 68, 0.15)',
+              border: '1px solid rgba(239, 68, 68, 0.3)',
+              color: '#ef4444',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              margin: '0 auto'
+            }}>
+              <Trash2 size={22} />
+            </div>
+            <div>
+              <h3 style={{ fontSize: '16px', fontWeight: '700', color: '#fff', margin: '0 0 6px 0' }}>
+                Delete Message?
+              </h3>
+              <p style={{ fontSize: '13px', color: 'rgba(255, 255, 255, 0.65)', margin: 0, lineHeight: '1.4' }}>
+                Are you sure you want to delete this message? It will be removed for both users.
+              </p>
+            </div>
+            <div style={{
+              display: 'flex',
+              gap: '10px',
+              marginTop: '6px'
+            }}>
+              <button
+                type="button"
+                onClick={() => setDeleteConfirmMsg(null)}
+                style={{
+                  flex: 1,
+                  padding: '10px 14px',
+                  borderRadius: '10px',
+                  border: '1px solid rgba(255, 255, 255, 0.12)',
+                  background: 'rgba(255, 255, 255, 0.08)',
+                  color: '#fff',
+                  fontWeight: '600',
+                  fontSize: '13.5px',
+                  cursor: 'pointer'
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleExecuteDelete}
+                style={{
+                  flex: 1,
+                  padding: '10px 14px',
+                  borderRadius: '10px',
+                  border: 'none',
+                  background: 'linear-gradient(135deg, #ef4444, #dc2626)',
+                  color: '#fff',
+                  fontWeight: '600',
+                  fontSize: '13.5px',
+                  cursor: 'pointer',
+                  boxShadow: '0 2px 10px rgba(239, 68, 68, 0.4)'
+                }}
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

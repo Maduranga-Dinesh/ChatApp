@@ -45,6 +45,14 @@ const messageSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    isEdited: {
+      type: Boolean,
+      default: false,
+    },
+    editedAt: {
+      type: Date,
+      default: null,
+    },
     replyTo: {
       sender: { type: String, default: null },
       text: { type: String, default: null },

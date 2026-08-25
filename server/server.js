@@ -382,6 +382,98 @@ app.post('/api/messages', async (req, res) => {
   }
 });
 
+// Edit Message Helper
+async function handleEditMessage({ msgId, clientMsgId, newText, sender }) {
+  if (!newText || !newText.trim()) return null;
+  const trimmed = newText.trim();
+  const now = new Date();
+  let updatedMsg = null;
+
+  if (isMongoConnected) {
+    const query = msgId ? { _id: msgId } : { clientMsgId };
+    const doc = await Message.findOne(query);
+    if (doc) {
+      doc.text = trimmed;
+      doc.isEdited = true;
+      doc.editedAt = now;
+      await doc.save();
+      updatedMsg = doc;
+    }
+  } else {
+    const msg = inMemoryStore.messages.find(
+      (m) => (msgId && (m._id === msgId || String(m._id) === String(msgId))) || (clientMsgId && m.clientMsgId === clientMsgId)
+    );
+    if (msg) {
+      msg.text = trimmed;
+      msg.isEdited = true;
+      msg.editedAt = now;
+      saveMessagesToDisk();
+      updatedMsg = msg;
+    }
+  }
+  return updatedMsg;
+}
+
+// Delete Message Helper
+async function handleDeleteMessage({ msgId, clientMsgId, sender }) {
+  let deletedIds = [];
+  if (isMongoConnected) {
+    const query = msgId ? { _id: msgId } : { clientMsgId };
+    const doc = await Message.findOne(query);
+    if (doc) {
+      deletedIds = [String(doc._id), doc.clientMsgId].filter(Boolean);
+      await Message.deleteOne({ _id: doc._id });
+    }
+  } else {
+    const idx = inMemoryStore.messages.findIndex(
+      (m) => (msgId && (m._id === msgId || String(m._id) === String(msgId))) || (clientMsgId && m.clientMsgId === clientMsgId)
+    );
+    if (idx !== -1) {
+      const msg = inMemoryStore.messages[idx];
+      deletedIds = [String(msg._id), msg.clientMsgId].filter(Boolean);
+      inMemoryStore.messages.splice(idx, 1);
+      saveMessagesToDisk();
+    }
+  }
+  return deletedIds;
+}
+
+// Edit Message API
+app.post('/api/messages/edit', async (req, res) => {
+  try {
+    const { msgId, clientMsgId, newText, sender } = req.body;
+    const updated = await handleEditMessage({ msgId, clientMsgId, newText, sender });
+    if (updated) {
+      io.emit('message-edited', {
+        msgId: updated._id || msgId,
+        clientMsgId: updated.clientMsgId || clientMsgId,
+        text: updated.text,
+        isEdited: true,
+        editedAt: updated.editedAt || new Date(),
+      });
+      return res.json({ success: true, message: updated });
+    }
+    res.status(404).json({ error: 'Message not found' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Delete Message API
+app.post('/api/messages/delete', async (req, res) => {
+  try {
+    const { msgId, clientMsgId, sender } = req.body;
+    const deletedIds = await handleDeleteMessage({ msgId, clientMsgId, sender });
+    if (deletedIds.length > 0) {
+      io.emit('messages-deleted', { deletedIds });
+      return res.json({ success: true, deletedIds });
+    }
+    res.status(404).json({ error: 'Message not found' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Mark Audio Message as Listened
 app.post('/api/messages/mark-audio-listened', async (req, res) => {
   try {
@@ -571,6 +663,34 @@ io.on('connection', (socket) => {
       }
     } catch (err) {
       console.error('Error handling mark-audio-listened socket event:', err);
+    }
+  });
+
+  socket.on('edit-message', async (data) => {
+    try {
+      const updated = await handleEditMessage(data);
+      if (updated) {
+        io.emit('message-edited', {
+          msgId: updated._id || data.msgId,
+          clientMsgId: updated.clientMsgId || data.clientMsgId,
+          text: updated.text,
+          isEdited: true,
+          editedAt: updated.editedAt || new Date(),
+        });
+      }
+    } catch (err) {
+      console.error('Error handling edit-message socket event:', err);
+    }
+  });
+
+  socket.on('delete-message', async (data) => {
+    try {
+      const deletedIds = await handleDeleteMessage(data);
+      if (deletedIds.length > 0) {
+        io.emit('messages-deleted', { deletedIds });
+      }
+    } catch (err) {
+      console.error('Error handling delete-message socket event:', err);
     }
   });
 
